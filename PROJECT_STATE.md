@@ -273,13 +273,21 @@ Completed so far:
   - live PnL and agent data wiring repaired
   - recent trades / recent orders labeling and tooltips improved
   - duplicate legacy live-view stack removed
+- Live-view runtime performance pass completed:
+  - bounded chart/history payload for long sessions
+  - lighter live summary generation
+  - serialized polling in the browser
+  - safer pause / play / reset behavior
+  - stable candle bucket alignment after the performance optimization
 
 Current emphasis:
 
 - stabilize the scripted ecology further
-- keep improving live observability and dashboard clarity
+- improve market realism and interpretability rather than more UI polish
+- prepare the first experimental scenarios on top of the scripted market
 - preserve a clean path toward adding the first RL agent after the market is stable
 - Basic tests added
+- make ecology tuning evidence-driven through metrics, presets, and quick reports
 
 Current repo status by area:
 
@@ -298,6 +306,13 @@ What exists:
 - enums for order/event concepts
 - base dataclasses for config and events
 - default config presets
+- named scenario presets have now been added
+- config-driven scripted-agent behavior overrides are being introduced so tuning can happen through config instead of direct class edits
+- current preset family includes:
+  - baseline
+  - high_news
+  - fragile_liquidity
+  - high_information_asymmetry
 
 ### Exchange
 
@@ -323,16 +338,21 @@ Present:
 
 - `src/marl_trading/analysis/`
 - `scripts/replay_market.py`
+- `scripts/run_market_health.py`
 - `tests/test_analysis_events.py`
 - `tests/test_analysis_replay.py`
+- `tests/test_analysis_health.py`
 
 What exists:
 
 - structured event-log handling
 - replay-series extraction
 - summary metrics
+- market-health summary metrics
 - plotting helpers
 - replay CLI
+- compact health-report CLI for preset comparison
+- preset-aware demo / health script flow is now available
 - richer payload support for:
   - latent fundamentals
   - news severity/headlines
@@ -379,6 +399,7 @@ What exists:
 - end-to-end demo run that emits a replayable event log
 - `market_world.png` generation via Pillow-based renderer
 - stepwise simulator state for live inspection
+- demo runner can now launch named presets directly
 
 ### Live Viewer
 
@@ -413,10 +434,14 @@ What exists:
   - total PnL
   - starting state
   - last action summary
+- live viewer is now materially more usable for long sessions because:
+  - chart/history work is bounded
+  - polling no longer overlaps aggressively
+  - pause is safer under load
+- live viewer startup path can now be driven by named presets
 
 ### Not Built Yet
 
-- unification of duplicated live-view code paths
 - stronger ecology tuning so the market remains healthy longer
 - more robust simulator tests
 - whale agent phase
@@ -428,6 +453,8 @@ Verified locally:
 
 - `PYTHONPYCACHEPREFIX=/tmp/pycache_marl python3 -m py_compile $(find src scripts tests -name '*.py' -type f | sort)` passed
 - `PYTHONPATH=src python3 scripts/replay_market.py --help` passed
+- `PYTHONPATH=src python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 60` passed
+- `PYTHONPATH=src python3 scripts/run_market_demo.py --preset fragile_liquidity --seed 7 --horizon 20 --summary-only ...` passed
 - `PYTHONPATH=src python3 scripts/run_market_demo.py --seed 7 --horizon 120 --output-dir artifacts/demo_seed7_h120` passed
 - `PYTHONPATH=src python3 scripts/serve_market_view.py --paused --port 8765` launched successfully outside sandbox
 - live API verified via:
@@ -442,12 +469,15 @@ Verified locally:
 - live API verified after redesign and PnL wiring:
   - `/api/state` now returns nonzero `realized_pnl` / `unrealized_pnl` where expected
   - `/api/control` stepping preserves the updated payload contract
+- long-run live session probe verified after the performance pass:
+  - bounded history window is preserved
+  - candle buckets stay aligned to absolute step ranges
+  - pause/play polling loop no longer relies on overlapping `setInterval` ticks
 
 Limitations:
 
 - `pytest` is not installed in the current sandbox, so the test suite was not run through the test runner
 - the replay CLI's richer figure path still depends on `matplotlib`, which is not installed in the current sandbox
-- there are currently duplicated live-view implementations (`market/live.py` and `live/`), which should be unified
 - the live market no longer dies immediately from the earlier settlement bug, but the ecology still needs tuning for richer and more persistent behavior
 
 ## Current Risks / Issues
@@ -471,7 +501,6 @@ The live viewer is now materially better aligned with the target experience, but
 Current remaining gaps:
 
 - no true browser test coverage
-- duplicated live code path still present
 - some market states remain visually sparse in early steps
 - agent panels will likely need pagination / filtering once activity scales up
 - compact workstation layout is in place, but interactive affordances are still minimal compared with a mature trading UI
@@ -562,11 +591,97 @@ These do not block the next coding slice, but they will matter soon:
 
 The next coding milestone should be:
 
-> continue turning the live viewer into a credible market workstation by unifying the live code path, tuning the scripted ecology, and improving agent/tape readability as activity increases.
+> tune and stress-test the scripted market ecology so the synthetic market stays active, interpretable, and experimentally useful over longer runs.
 
 That should happen before adding any RL agent.
 
 Implementation rule for that next step:
 
-- build adapters around the current `exchange/` and `analysis/` layers
-- do not duplicate order/event schemas again
+- do not start another major UI redesign pass unless a market-analysis need forces it
+- focus on market behavior, not cosmetics
+- keep using the current `exchange/`, `analysis/`, and `live/` contracts rather than introducing new parallel schemas
+
+## Active Execution Plan
+
+The current work should proceed in this order:
+
+### Step 1: Market-Health Diagnostics
+
+Goal:
+
+- define a compact set of health metrics for the scripted market so tuning can be evidence-driven
+
+Target outputs:
+
+- reusable health-summary function(s)
+- tests around the health summary contract
+- metrics that are easy to compare across runs
+
+### Step 2: Scenario / Preset Scaffolding
+
+Goal:
+
+- make it easy to run named market worlds without hand-editing code
+
+Target outputs:
+
+- baseline preset
+- at least a few stress-style preset variants
+- clean config entry points for future experiments
+
+### Step 3: Ecology Diagnosis
+
+Goal:
+
+- run the current scripted ecology through the new diagnostics and identify the main failure modes
+
+Expected questions:
+
+- does liquidity persist
+- do spreads remain interpretable
+- do agents deactivate too quickly
+- does news produce visible but not pathological behavior
+- does one agent type dominate too strongly
+
+### Step 4: Ecology Tuning
+
+Goal:
+
+- tune the scripted agents and market-process parameters against the diagnostics
+
+Expected focus areas:
+
+- market-maker quoting behavior
+- noise-trader aggressiveness
+- trend-follower thresholding
+- informed-trader edge
+- news cadence / impact
+- deactivation harshness
+
+Current diagnosis from the first ecology pass:
+
+- the single market maker is currently the main liquidity governor
+- noise, trend, and informed thresholds are the strongest immediate behavior levers
+- deactivation is not yet the dominant instability source
+- news matters, but appears secondary to liquidity and policy thresholds in the present ecology
+
+## Current Practical Testing Loop
+
+The current intended workflow is:
+
+1. choose a preset
+2. inspect its compact health report in terminal
+3. launch the same preset in the live viewer when visual inspection is needed
+4. compare behavior and metrics before making tuning changes
+
+Current useful entrypoints:
+
+- `scripts/run_market_health.py`
+- `scripts/run_market_demo.py`
+- `scripts/serve_market_view.py`
+
+### Step 5: Stability Check Before RL
+
+Goal:
+
+- confirm that the scripted market is stable enough to justify adding the first RL agent
