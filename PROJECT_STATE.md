@@ -249,6 +249,11 @@ Goal:
 Completed so far:
 
 - `THESIS.md` written as the initial manifesto
+- `PROFESSOR_UPDATE.md` added as a concise professor-facing summary of:
+  - current synthetic market foundation
+  - current diagnostics and presets
+  - why RL has not started yet
+  - the planned RL and MARL roadmap
 - `PROJECT_STATE.md` initialized as shared working memory
 - Python package scaffold created
 - Core shared domain/config layer created
@@ -288,6 +293,8 @@ Current emphasis:
 - preserve a clean path toward adding the first RL agent after the market is stable
 - Basic tests added
 - make ecology tuning evidence-driven through metrics, presets, and quick reports
+- use preset comparisons and live-viewer breakdowns as the basis for the next tuning wave
+- preserve deterministic reproducibility under fixed preset / seed / horizon so scripted-only vs scripted+RL comparisons are scientifically meaningful
 
 Current repo status by area:
 
@@ -349,9 +356,14 @@ What exists:
 - replay-series extraction
 - summary metrics
 - market-health summary metrics
+- markdown summary files for:
+  - market-health preset comparisons
+  - live-viewer preset breakdowns
 - plotting helpers
 - replay CLI
 - compact health-report CLI for preset comparison
+- optional `--portfolio-breakdown` output in `run_market_health.py`
+- side-by-side run comparison tooling via `scripts/compare_market_runs.py`
 - preset-aware demo / health script flow is now available
 - richer payload support for:
   - latent fundamentals
@@ -400,6 +412,7 @@ What exists:
 - `market_world.png` generation via Pillow-based renderer
 - stepwise simulator state for live inspection
 - demo runner can now launch named presets directly
+- `high_news` now aims to be distinct through stronger news impact / reaction, not by relying on a shorter default horizon
 
 ### Live Viewer
 
@@ -418,10 +431,9 @@ What exists:
 - top-10 order book plus full-book payload support
 - line and candlestick data sources
 - recent trades / tape
-- recent agent actions
+- recent orders / order-event feed
 - agent portfolio cards with PnL fields
 - right-anchored chart window so sparse history behaves more like a market terminal
-- clearer on-chart trade markers
 - fixed-depth visible order book window
 - wide-screen main-column plus sticky sidebar layout
 - faster local server restart support via reusable HTTP binding
@@ -439,13 +451,35 @@ What exists:
   - polling no longer overlaps aggressively
   - pause is safer under load
 - live viewer startup path can now be driven by named presets
+- market-data counters now read backend totals rather than capped visible slices
 
 ### Not Built Yet
 
 - stronger ecology tuning so the market remains healthy longer
 - more robust simulator tests
 - whale agent phase
-- RL integration
+- RL training / policy integration
+
+### RL Boundary
+
+Present:
+
+- `src/marl_trading/rl/`
+- `tests/test_rl_boundary.py`
+
+What exists:
+
+- a minimal single-agent RL boundary for the first controlled comparison
+- compact observation features derived from `MarketObservation`
+- small discrete action set:
+  - hold
+  - market buy
+  - market sell
+  - limit buy
+  - limit sell
+  - cancel oldest
+- simple equity-delta reward with optional inventory penalty
+- `SingleAgentMarketEnv` wrapper for one learning-controlled agent inside an otherwise scripted market
 
 ## Validation Status
 
@@ -480,6 +514,94 @@ Limitations:
 - the replay CLI's richer figure path still depends on `matplotlib`, which is not installed in the current sandbox
 - the live market no longer dies immediately from the earlier settlement bug, but the ecology still needs tuning for richer and more persistent behavior
 
+## Latest Evidence From Preset Testing
+
+Primary evidence files:
+
+- `market_health_tests.txt`
+- `market_health_summary.md`
+- `live_viewer_breakdown.txt`
+- `live_viewer_breakdown_summary.md`
+
+Key findings:
+
+- `baseline` is the best current control condition:
+  - balanced
+  - healthy
+  - all four agents can end positive in the 10k-step live-viewer breakdown
+- `fragile_liquidity` is already a clearly distinct regime:
+  - thinnest book by spread availability
+  - lowest trade rate
+  - strongest aggregate PnL in the 10k live-viewer breakdown
+  - trend follower benefits strongly from thinner liquidity
+- `high_information_asymmetry` is also clearly distinct:
+  - highest trade intensity
+  - strongest evidence of informed-agent dominance
+  - high activity does not translate into high aggregate profitability
+- `high_news` is only partially distinct right now:
+  - widest mean spread in the market-health summaries
+  - strongest retail damage and biggest informed inventory build in the 10k live-viewer breakdown
+  - but it still may need one more evaluation pass in the live viewer
+  - current implementation direction is stronger news impact / reaction, not simply more frequent news
+
+Interpretation:
+
+- we now have three clearly useful scripted regimes:
+  - `baseline`
+  - `fragile_liquidity`
+  - `high_information_asymmetry`
+- `high_news` needs one more tuning pass and better preset/runtime alignment in the live viewer
+
+New experimental interpretation:
+
+- repeated runs with the same preset / seed / horizon currently converge to the same final numbers across:
+  - `run_market_health.py`
+  - the live viewer
+- this is good and should be preserved
+- it means the scripted market is currently reproducible enough to support controlled counterfactual experiments:
+  - scripted-only world
+  - same world plus one RL agent
+  - compare the deltas
+
+## Current Recommended Next Step
+
+Do not start RL training yet.
+
+The next milestone should combine:
+
+- richer diagnostics
+- explicit run-to-run comparison tooling
+- one more tuning pass on `high_news`
+- then the environment boundary for one RL agent
+
+Status update:
+
+- richer diagnostics: implemented first pass
+- run-to-run comparison tooling: implemented first pass
+- one-RL-agent boundary: implemented first pass
+- next remaining major item: verify and refine `high_news`, then use the new tools for the first scripted-only vs scripted+RL comparison workflow
+
+Priority order:
+
+1. Verify the new `high_news` regime with:
+   - `run_market_health.py`
+   - `compare_market_runs.py`
+   - the live viewer
+2. Run the next preset-tuning wave if needed
+   - focus on making `high_news` more distinct through stronger news impact on the latent fundamental
+   - keep `baseline` as control
+   - preserve `fragile_liquidity` and `high_information_asymmetry` as already-distinct regimes
+3. Use the new comparison tooling for:
+   - scripted-only
+   - scripted + RL
+   - same preset / seed / horizon
+4. Rerun:
+   - terminal health summaries
+   - live-viewer breakdowns
+   - preset comparison markdown summaries
+5. Only after that:
+   - start the first RL experiment
+
 ## Current Risks / Issues
 
 ### Worker Scope Drift
@@ -504,6 +626,9 @@ Current remaining gaps:
 - some market states remain visually sparse in early steps
 - agent panels will likely need pagination / filtering once activity scales up
 - compact workstation layout is in place, but interactive affordances are still minimal compared with a mature trading UI
+- the live viewer still defaults to `horizon=10000` even when a preset has its own shorter intended horizon
+- `run_market_health.py` now exposes a useful first-pass portfolio breakdown, but it is still not identical to the full live-session accounting view in every field
+- the comparison tooling now exists, but it needs real scripted-vs-RL experimental use before we know which metrics are the most informative
 
 ### Model Boundary Drift
 
@@ -556,8 +681,10 @@ These do not block the next coding slice, but they will matter soon:
 
 - exact latent fundamental dynamics
 - exact news scheduling model
+- exact news impact scaling for the `high_news` regime
 - exact private-signal noise model
 - exact episode horizon definition
+- exact RL insertion boundary for the first controlled comparison
 - exact public identity exposure on the tape
 
 ## Locked Visibility Direction

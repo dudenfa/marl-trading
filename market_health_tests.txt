@@ -1,0 +1,138 @@
+BASELINE:
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 1000
+preset=baseline seed=7 horizon=1000
+events=2401 steps=1000 trades=472 news=16 snapshots=2400 agents=4
+coverage=1.000 spread_availability=0.259 mean_spread=0.1771 active_agents_mean=4.00 final_total_equity=49494.94 final_midpoint=101.0100 final_fundamental=101.0938
+Time taken: 0.1852855682373047 seconds
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 10000
+preset=baseline seed=7 horizon=10000
+events=23539 steps=10000 trades=4466 news=166 snapshots=23538 agents=4
+coverage=1.000 spread_availability=0.368 mean_spread=0.2437 active_agents_mean=4.00 final_total_equity=50669.59 final_midpoint=113.2450 final_fundamental=113.5063
+Time taken: 7.743116617202759 seconds
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 20000
+preset=baseline seed=7 horizon=20000
+events=46114 steps=20000 trades=8323 news=333 snapshots=46113 agents=4
+coverage=1.000 spread_availability=0.414 mean_spread=0.2548 active_agents_mean=4.00 final_total_equity=51569.25 final_midpoint=122.2900 final_fundamental=123.0771
+Time taken: 33.55806350708008 seconds
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 30000
+preset=baseline seed=7 horizon=30000
+events=69298 steps=30000 trades=12579 news=500 snapshots=69297 agents=4
+coverage=1.000 spread_availability=0.396 mean_spread=0.2484 active_agents_mean=4.00 final_total_equity=54980.78 final_midpoint=159.3700 final_fundamental=159.2488
+Time taken: 89.81934523582458 seconds
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 50000
+preset=baseline seed=7 horizon=50000
+events=115240 steps=50000 trades=20799 news=833 snapshots=115239 agents=4
+coverage=1.000 spread_availability=0.394 mean_spread=0.2414 active_agents_mean=4.00 final_total_equity=59007.27 final_midpoint=202.2050 final_fundamental=202.2342
+Time taken: 354.2528295516968 seconds
+
+command: python3 scripts/run_market_health.py --preset baseline --seed 7 --horizon 100000
+preset=baseline seed=7 horizon=100000
+events=227587 steps=100000 trades=39816 news=1666 snapshots=227586 agents=4
+coverage=1.000 spread_availability=0.407 mean_spread=0.2417 active_agents_mean=4.00 final_total_equity=67392.18 final_midpoint=290.5700 final_fundamental=291.4061
+Time taken: 1947.5915138721466 seconds
+
+
+
+FRAGILE_LIQUIDITY:
+command: python3 scripts/run_market_health.py --preset fragile_liquidity --seed 7 --horizon 1000
+preset=fragile_liquidity seed=7 horizon=1000
+events=2478 steps=1000 trades=330 news=16 snapshots=2477 agents=4
+coverage=1.000 spread_availability=0.081 mean_spread=0.1147 active_agents_mean=4.00 final_total_equity=49261.79 final_midpoint=98.2800 final_fundamental=98.5296
+Time taken: 0.18392300605773926 seconds 
+
+command: python3 scripts/run_market_health.py --preset fragile_liquidity --seed 7 --horizon 10000
+preset=fragile_liquidity seed=7 horizon=10000
+events=24565 steps=10000 trades=3372 news=166 snapshots=24564 agents=4
+coverage=1.000 spread_availability=0.080 mean_spread=0.1354 active_agents_mean=4.00 final_total_equity=51243.17 final_midpoint=119.6100 final_fundamental=119.6082
+Time taken: 6.810148000717163 seconds
+
+command: python3 scripts/run_market_health.py --preset fragile_liquidity --seed 7 --horizon 20000
+preset=fragile_liquidity seed=7 horizon=20000
+events=49081 steps=20000 trades=6803 news=333 snapshots=49080 agents=4
+coverage=1.000 spread_availability=0.084 mean_spread=0.1343 active_agents_mean=4.00 final_total_equity=52240.12 final_midpoint=129.9100 final_fundamental=130.2140
+Time taken: 30.66353678703308 seconds
+
+command: python3 scripts/run_market_health.py --preset fragile_liquidity --seed 7 --horizon 30000
+preset=fragile_liquidity seed=7 horizon=30000
+events=73289 steps=30000 trades=9973 news=500 snapshots=73288 agents=4
+coverage=1.000 spread_availability=0.083 mean_spread=0.1356 active_agents_mean=4.00 final_total_equity=55764.41 final_midpoint=165.5950 final_fundamental=167.7065
+Time taken: 80.80514883995056 seconds 
+
+command: python3 scripts/run_market_health.py --preset fragile_liquidity --seed 7 --horizon 100000
+preset=fragile_liquidity seed=7 horizon=100000
+events=238769 steps=100000 trades=30950 news=1666 snapshots=238768 agents=4
+coverage=1.000 spread_availability=0.087 mean_spread=0.1351 active_agents_mean=4.00 final_total_equity=72723.84 final_midpoint=347.5350 final_fundamental=348.1259
+Time taken: 1839.6354172229767 seconds
+
+
+
+
+HIGH_INFORMATION_ASYMMETRY:
+
+command: python3 scripts/run_market_health.py --preset high_information_asymmetry --seed 7 --horizon 1000
+preset=high_information_asymmetry seed=7 horizon=1000
+events=2545 steps=1000 trades=496 news=16 snapshots=2544 agents=4
+coverage=1.000 spread_availability=0.276 mean_spread=0.1889 active_agents_mean=4.00 final_total_equity=49519.38 final_midpoint=99.3650 final_fundamental=99.1602
+Time taken: 0.18197226524353027 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_information_asymmetry --seed 7 --horizon 10000
+preset=high_information_asymmetry seed=7 horizon=10000
+events=25296 steps=10000 trades=4958 news=166 snapshots=25295 agents=4
+coverage=1.000 spread_availability=0.262 mean_spread=0.2161 active_agents_mean=4.00 final_total_equity=49645.46 final_midpoint=99.4050 final_fundamental=100.4735
+Time taken: 8.05523133277893 seconds
+
+command: python3 scripts/run_market_health.py --preset high_information_asymmetry --seed 7 --horizon 20000
+preset=high_information_asymmetry seed=7 horizon=20000
+events=50252 steps=20000 trades=9839 news=333 snapshots=50251 agents=4
+coverage=1.000 spread_availability=0.267 mean_spread=0.2097 active_agents_mean=4.00 final_total_equity=52400.99 final_midpoint=129.1450 final_fundamental=129.1770
+Time taken: 35.695228815078735 seconds
+
+command: python3 scripts/run_market_health.py --preset high_information_asymmetry --seed 7 --horizon 30000
+preset=high_information_asymmetry seed=7 horizon=30000
+events=75183 steps=30000 trades=14624 news=500 snapshots=75182 agents=4
+coverage=1.000 spread_availability=0.269 mean_spread=0.2135 active_agents_mean=4.00 final_total_equity=56492.03 final_midpoint=171.1750 final_fundamental=171.7919
+Time taken: 89.77747178077698 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_information_asymmetry --seed 7 --horizon 100000
+preset=high_information_asymmetry seed=7 horizon=100000
+events=247360 steps=100000 trades=47202 news=1666 snapshots=247359 agents=4
+coverage=1.000 spread_availability=0.277 mean_spread=0.2145 active_agents_mean=4.00 final_total_equity=70193.37 final_midpoint=314.3000 final_fundamental=314.5143
+Time taken: 2104.6492052078247 seconds
+
+
+
+HIGH_NEWS:
+command: python3 scripts/run_market_health.py --preset high_news --seed 7 --horizon 1000
+preset=high_news seed=7 horizon=1000
+events=2398 steps=1000 trades=465 news=16 snapshots=2397 agents=4
+coverage=1.000 spread_availability=0.378 mean_spread=0.2414 active_agents_mean=4.00 final_total_equity=49421.21 final_midpoint=100.4050 final_fundamental=100.2257
+Time taken: 0.17912840843200684 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_news --seed 7 --horizon 10000
+preset=high_news seed=7 horizon=10000
+events=23417 steps=10000 trades=4454 news=166 snapshots=23416 agents=4
+coverage=1.000 spread_availability=0.395 mean_spread=0.2832 active_agents_mean=4.00 final_total_equity=49756.75 final_midpoint=103.8900 final_fundamental=103.7953
+Time taken: 7.357586622238159 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_news --seed 7 --horizon 20000
+preset=high_news seed=7 horizon=20000
+events=46309 steps=20000 trades=8408 news=333 snapshots=46308 agents=4
+coverage=1.000 spread_availability=0.397 mean_spread=0.3053 active_agents_mean=4.00 final_total_equity=51972.74 final_midpoint=126.9350 final_fundamental=127.3696
+Time taken: 40.5525643825531 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_news --seed 7 --horizon 30000
+preset=high_news seed=7 horizon=30000
+events=69523 steps=30000 trades=12744 news=500 snapshots=69522 agents=4
+coverage=1.000 spread_availability=0.385 mean_spread=0.2927 active_agents_mean=4.00 final_total_equity=54908.63 final_midpoint=157.6050 final_fundamental=158.6024
+Time taken: 88.73943257331848 seconds 
+
+command: python3 scripts/run_market_health.py --preset high_news --seed 7 --horizon 100000
+preset=high_news seed=7 horizon=100000
+events=227455 steps=100000 trades=40141 news=1666 snapshots=227454 agents=4
+coverage=1.000 spread_availability=0.402 mean_spread=0.2495 active_agents_mean=4.00 final_total_equity=71084.42 final_midpoint=330.0600 final_fundamental=330.6853
+Time taken: 1865.5868616104126 seconds
