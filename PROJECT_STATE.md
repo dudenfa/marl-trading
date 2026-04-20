@@ -458,14 +458,18 @@ What exists:
 - stronger ecology tuning so the market remains healthy longer
 - more robust simulator tests
 - whale agent phase
-- RL training / policy integration
+- MARL training / multi-learning-agent interaction
 
-### RL Boundary
+### RL First-Agent Infrastructure
 
 Present:
 
 - `src/marl_trading/rl/`
 - `tests/test_rl_boundary.py`
+- `scripts/train_rl_agent.py`
+- `scripts/eval_rl_agent.py`
+- `tests/test_train_rl_agent.py`
+- `tests/test_eval_rl_agent.py`
 
 What exists:
 
@@ -480,6 +484,27 @@ What exists:
   - cancel oldest
 - simple equity-delta reward with optional inventory penalty
 - `SingleAgentMarketEnv` wrapper for one learning-controlled agent inside an otherwise scripted market
+- `GymSingleAgentMarketEnv` wrapper so the first PPO agent can train through a standard Gymnasium-style API
+- PPO training script that replaces one scripted slot at runtime rather than deleting the scripted agent from the project
+- PPO evaluation script that emits comparison-friendly JSON with:
+  - market-health summary
+  - per-agent portfolio breakdown
+  - runtime metadata
+- live-viewer PPO support:
+  - optional checkpoint-driven runtime replacement of one scripted slot
+  - `trend_01` can now be replaced in the browser session without removing the scripted trend agent from the project
+  - existing live UI/state contract stays intact while the PPO-controlled slot trades inside the same synthetic market
+- RL-only live diagnostics:
+  - the agents panel now exposes a dedicated RL diagnostics block when a runtime PPO checkpoint is active
+  - it shows decision counts, action-type counts, recent RL order events, and a compact portfolio snapshot for the PPO-controlled slot
+  - this is the main observability tool for Phase A because it lets us tell apart "inactive", "placing non-filling passive orders", and "actually trading"
+- RL slot inventory override:
+  - the runtime-replaced PPO slot now defaults to `0.0` starting inventory in training, evaluation, and live-view playback
+  - this keeps the RL agent flat at episode start so any later PnL must come from actual decisions rather than inherited inventory drift
+- first experiment convention now locked:
+  - keep the scripted market unchanged
+  - replace `trend_01` at runtime with the RL controller for the RL run
+  - compare against the scripted-only baseline under the same preset / seed / horizon
 
 ## Validation Status
 
@@ -507,6 +532,19 @@ Verified locally:
   - bounded history window is preserved
   - candle buckets stay aligned to absolute step ranges
   - pause/play polling loop no longer relies on overlapping `setInterval` ticks
+- targeted RL verification now passed:
+  - RL env, train-script, and eval-script tests pass (`13 passed`)
+  - a tiny PPO smoke run completed end to end
+  - checkpoint save worked
+  - evaluation of that checkpoint produced comparison-friendly JSON with market summary and per-agent breakdown
+- targeted live-viewer PPO verification now passed:
+  - live session/server tests pass with the PPO runtime path enabled
+  - CLI now accepts `--checkpoint` and `--learning-agent-id`
+  - fake-model smoke tests confirm `trend_01` appears as `rl_agent` when runtime replacement is enabled
+- Phase A PPO verification now passed:
+  - a longer single-seed PPO checkpoint was trained for `baseline`, `seed=7`, `horizon=5000`, `total_timesteps=50000`
+  - that checkpoint evaluates cleanly through the RL evaluation pipeline
+  - the first long scripted-only vs PPO comparison now exists
 
 Limitations:
 
@@ -538,11 +576,13 @@ Key findings:
   - highest trade intensity
   - strongest evidence of informed-agent dominance
   - high activity does not translate into high aggregate profitability
-- `high_news` is only partially distinct right now:
-  - widest mean spread in the market-health summaries
-  - strongest retail damage and biggest informed inventory build in the 10k live-viewer breakdown
-  - but it still may need one more evaluation pass in the live viewer
-  - current implementation direction is stronger news impact / reaction, not simply more frequent news
+- `high_news` is now meaningfully distinct in terminal diagnostics:
+  - same news count as `baseline` at fixed horizon
+  - much wider mean spread
+  - much higher midpoint volatility
+  - stronger final midpoint / fundamental displacement
+  - stronger informed-trader outperformance and weaker retail outcome
+  - current implementation direction remains stronger news impact / reaction, not simply more frequent news
 
 Interpretation:
 
@@ -563,44 +603,75 @@ New experimental interpretation:
   - same world plus one RL agent
   - compare the deltas
 
+## Latest RL Findings
+
+Current Phase A checkpoint:
+
+- preset: `baseline`
+- learning slot: `trend_01`
+- seed: `7`
+- horizon: `5000`
+- PPO timesteps: `50000`
+
+What the first long scripted-only vs PPO comparison shows:
+
+- PPO is definitely affecting the market:
+  - trades drop from `2252` to `1697` (`-24.6%`)
+  - spread availability rises from `0.382` to `0.455`
+  - mean spread narrows slightly from `0.2400` to `0.2181`
+  - midpoint volatility falls from `10.43` bps to `9.21` bps
+- the market becomes quieter and slightly more orderly, not more chaotic
+- `trend_01` still looks too passive:
+  - cash stays at `10000`
+  - inventory stays at `16`
+  - open orders stay `0`
+  - this strongly suggests a hold-heavy or near-inactive policy
+- first Phase A adjustment now implemented:
+  - the RL-controlled slot starts with `0` inventory by default
+  - this is the first clean attempt to force PPO to express a real trading policy before moving to multi-seed training
+- so the first long-run PPO result is:
+  - technically successful
+  - scientifically useful
+  - but not yet a convincing learned trading strategy
+
+Interpretation:
+
+- the RL boundary is working
+- the comparison tooling is working
+- replacing one scripted slot materially changes the market
+- but current PPO behavior still looks more like "remove directional pressure" than "trade intelligently"
+
+Phase A / Phase B are now clearer:
+
+- Phase A:
+  - fixed preset
+  - fixed seed
+  - longer PPO training
+  - live-view inspection with RL-only diagnostics
+  - goal: confirm PPO can become meaningfully active
+- Phase B:
+  - multi-seed training episodes
+  - unseen-seed evaluation
+  - then comparisons become proper train/test experiments instead of single-world debugging
+
 ## Current Recommended Next Step
 
-Do not start RL training yet.
-
-The next milestone should combine:
-
-- richer diagnostics
-- explicit run-to-run comparison tooling
-- one more tuning pass on `high_news`
-- then the environment boundary for one RL agent
-
-Status update:
-
-- richer diagnostics: implemented first pass
-- run-to-run comparison tooling: implemented first pass
-- one-RL-agent boundary: implemented first pass
-- next remaining major item: verify and refine `high_news`, then use the new tools for the first scripted-only vs scripted+RL comparison workflow
+Use the new RL diagnostics to understand why PPO is still too passive before expanding to Phase B.
 
 Priority order:
 
-1. Verify the new `high_news` regime with:
-   - `run_market_health.py`
-   - `compare_market_runs.py`
-   - the live viewer
-2. Run the next preset-tuning wave if needed
-   - focus on making `high_news` more distinct through stronger news impact on the latent fundamental
-   - keep `baseline` as control
-   - preserve `fragile_liquidity` and `high_information_asymmetry` as already-distinct regimes
-3. Use the new comparison tooling for:
-   - scripted-only
-   - scripted + RL
-   - same preset / seed / horizon
-4. Rerun:
-   - terminal health summaries
-   - live-viewer breakdowns
-   - preset comparison markdown summaries
-5. Only after that:
-   - start the first RL experiment
+1. Inspect the PPO-controlled `trend_01` slot in the live viewer using the RL-only diagnostics block
+2. Quantify the actual action mix during evaluation:
+   - hold
+   - market actions
+   - limit actions
+   - cancel actions
+3. Decide whether the current reward/action-space design is too conservative for Phase A
+4. If PPO becomes meaningfully active:
+   - move to multi-seed training
+   - evaluate on unseen seeds
+5. If PPO remains near-inactive:
+   - adjust reward / action-space / diagnostics before starting Phase B
 
 ## Current Risks / Issues
 
@@ -716,17 +787,17 @@ These do not block the next coding slice, but they will matter soon:
 
 ## Immediate Next Step
 
-The next coding milestone should be:
+The next coding / testing milestone should be:
 
-> tune and stress-test the scripted market ecology so the synthetic market stays active, interpretable, and experimentally useful over longer runs.
-
-That should happen before adding any RL agent.
+> run the first scripted-only vs PPO-controlled comparison with `trend_01` replaced at runtime.
 
 Implementation rule for that next step:
 
-- do not start another major UI redesign pass unless a market-analysis need forces it
-- focus on market behavior, not cosmetics
-- keep using the current `exchange/`, `analysis/`, and `live/` contracts rather than introducing new parallel schemas
+- do not delete the scripted trend agent from the project
+- use slot replacement at runtime only
+- keep the market contract fixed while comparing scripted-only vs PPO
+- use the existing health / comparison tooling rather than inventing a new reporting path
+- use the live viewer as part of the first PPO inspection loop, not only terminal reports
 
 ## Active Execution Plan
 
