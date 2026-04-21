@@ -1164,6 +1164,32 @@ This section is the chronological history of the important RL / market-ecology i
   - keep microstructure visible at small step windows
   - make broader market regimes easier to inspect at larger aggregation windows
 
+### Chart History And Panning
+
+- We then discovered that high timeframes were not actually showing more market history.
+- Root cause:
+  - the live backend was only sending a bounded recent history window
+  - the frontend was also always anchoring the chart to the latest candles
+- Implemented change:
+  - live chart history limit was expanded substantially
+  - the chart now supports dragging/panning back to older candle windows
+  - higher aggregation windows can now reveal more historical candles instead of only compressing the same newest segment
+- Goal:
+  - make the viewer behave more like a real charting tool
+  - let larger step-based timeframes function as broader historical context, not just compact latest-history views
+
+### Chart Interaction Fixes
+
+- After testing the first panning/timeframe version, we found two UX bugs:
+  - drag direction felt inverted
+  - volume bars did not scale correctly across the full high-timeframe history
+- Fixes applied:
+  - chart dragging now behaves like dragging the chart itself:
+    - move right to go back in time
+    - move left to come back toward the present
+  - full per-step chart history now carries volume into the live chart line series
+  - higher timeframes now aggregate volume from the full visible history rather than only from a small recent trade window
+
 ### Current Interpretation
 
 - The current blocker is no longer only "make RL active."
