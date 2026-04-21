@@ -1214,3 +1214,204 @@ This section is the chronological history of the important RL / market-ecology i
     - informed / retail / trend policies should be more willing to sell out of long inventory rather than only accumulate
     - positions should have clearer exit logic
 - Phase A RL work should continue, but now with the understanding that a market-liquidity redesign is likely required in parallel.
+
+### Market Maker V2 Implementation
+
+- We implemented the first dedicated liquidity-health redesign wave, focused only on the market maker.
+- Core architectural change:
+  - `ScriptedAgent.decide()` now conceptually supports returning multiple intents per decision step
+  - the simulator now normalizes steady-state decisions into a tuple of intents and submits them sequentially in deterministic order
+  - this preserves the existing reservation / logging / matching path while allowing one agent decision to express more than one quote
+- Backward-compatibility choice:
+  - the simulator still normalizes `None` / single-intent return values safely, so older agent paths and RL wrappers are not broken by the interface widening
+
+### Market Maker V2 Behavior
+
+- The market maker was redesigned around persistent two-sided liquidity rather than one-sided inventory-anchor toggling.
+- New maker modes:
+  - normal two-sided quoting when resources and resting-order capacity allow
+  - inventory-skew mode:
+    - keep both sides alive
+    - widen / shrink side-specific padding based on inventory imbalance
+    - skew quote size toward the side that helps rebalance inventory
+  - empty-side restoration mode:
+    - if ask side is empty and the maker has inventory, force an urgent ask quote
+    - if bid side is empty and the maker has cash, force an urgent bid quote
+    - this uses tighter restoration padding but still stays limit-only
+- Important design choice:
+  - maker v2 does **not** use market orders
+  - maker v2 still degrades gracefully to one-sided quoting only when:
+    - inventory is insufficient for asks
+    - cash is insufficient for bids
+    - or resting-order capacity is too constrained to support both sides
+
+### Market Maker V2 Config Surface
+
+- We extended `MarketMakerBehaviorConfig` with optional maker-v2 tuning knobs:
+  - `inventory_tolerance`
+  - `min_quote_size`
+  - `max_quote_size`
+  - `bid_padding_ticks`
+  - `ask_padding_ticks`
+  - `inventory_skew_strength`
+  - `inventory_size_decay`
+  - `empty_side_padding_ticks`
+- Compatibility rules:
+  - legacy `inventory_anchor`, `quote_size`, and `quote_padding_ticks` still work
+  - side-specific bid/ask padding overrides symmetric `quote_padding_ticks` when present
+  - omitted new fields still fall back to sane defaults
+  - existing presets remain valid without needing to set all new maker-v2 knobs
+
+### Market Maker V2 Test Coverage
+
+- Added / updated tests for:
+  - normal maker two-sided quotes
+  - inventory-skew behavior that keeps both sides alive
+  - empty ask-side restoration
+  - empty bid-side restoration
+  - graceful one-sided degradation under inventory constraint
+  - simulator acceptance of multiple intents from one decision step
+  - maker-config override propagation
+  - side-specific padding precedence over symmetric padding
+- Current targeted verification status:
+  - `62` focused tests passing
+
+### Market Maker V2 Smoke Checks
+
+- Short post-implementation health-report smoke runs:
+  - `baseline`, seed `7`, horizon `5000`
+    - `trades=2123`
+    - `spread_availability=0.579`
+    - `mean_spread=0.0801`
+  - `fragile_liquidity`, seed `7`, horizon `5000`
+    - `trades=1676`
+    - `spread_availability=0.199`
+    - `mean_spread=0.0262`
+- Interpretation:
+  - the baseline market remains active after maker-v2 integration
+  - fragile liquidity still looks distinct from baseline
+  - this is only an initial smoke check, not full validation of freeze reduction yet
+
+### Next Validation Task
+
+- The next thing we need to inspect is whether maker v2 actually reduces the long bid-only / zero-volume freeze in longer live-view and health runs.
+- In particular we should check:
+  - whether ask-side disappearance becomes materially rarer
+  - whether the maker now repopulates asks in the dead-book states that RL previously exposed
+  - whether baseline remains healthier without collapsing fragile-liquidity into the same regime
+
+### Maker V2 Validation In RL Context
+
+- We then validated maker-v2 in the context that originally exposed the liquidity problem:
+  - baseline scripted-only sanity check
+  - live viewer with RL agent inserted
+  - evaluation and scripted-vs-RL comparison
+- Main result:
+  - maker-v2 appears to have improved the original liquidity-freeze failure mode
+  - the market no longer collapses as easily into a dead bid-only / zero-volume state when the RL agent applies persistent buy pressure
+  - informed and retail agents are able to keep recycling inventory because the maker now restores sell-side liquidity more reliably
+- Important interpretation:
+  - maker-v2 helped the **market survive**
+  - but it did **not** solve RL behavior by itself
+
+### Fresh RL Retrain In Maker-V2 Market
+
+- After the market-maker redesign, we retrained the RL agent from scratch in the updated baseline market.
+- This was important because the old checkpoint had been trained in a different market structure and was no longer a fair measure of what PPO could learn in the new environment.
+- New milestone reached:
+  - the RL agent now genuinely participates using both buys and sells
+  - it is no longer stuck in the earlier failure modes of:
+    - pure inactivity
+    - buy-hoarding without exits
+    - invalid-action loops
+- Observed nuance:
+  - the agent currently prefers selling via limit orders
+  - it uses both market and limit orders on the buy side
+
+### Seen-Seed RL Result
+
+- On the training / seen seed (`baseline`, seed `7`, horizon `10000`):
+  - trades increased strongly:
+    - `3151 -> 4618`
+  - spread availability improved:
+    - `0.394 -> 0.565`
+  - final midpoint and final fundamental stayed very close:
+    - midpoint `130.3450`
+    - fundamental `130.0584`
+  - the RL agent realized much more PnL than the scripted trend baseline
+- Interpretation:
+  - on the seen seed, PPO is no longer merely active
+  - it appears to have learned a usable participation policy in the maker-v2 world
+  - this is the first clearly successful Phase-A participation result
+
+### Unseen-Seed RL Result
+
+- We then evaluated the same fresh checkpoint on an unseen seed (`baseline`, seed `8`, horizon `10000`).
+- Main findings:
+  - trades still increased strongly:
+    - `2726 -> 4140`
+  - spread availability also improved strongly:
+    - `0.293 -> 0.489`
+  - but total market equity became much worse:
+    - `52601.88 -> 49498.06`
+  - the RL-controlled `trend_01` underperformed badly relative to scripted baseline
+- Interpretation:
+  - the policy generalizes in **participation**
+  - it does **not yet generalize in quality**
+  - PPO has learned to be in the market, but not yet how to behave robustly across different synthetic worlds
+
+### Current RL Behavioral Interpretation
+
+- Current RL behavior is much better than earlier versions, but still structurally biased:
+  - the policy can now buy and sell
+  - however it still tends to accumulate long inventory too easily
+  - when the world turns against that long bias, the RL agent can become heavily negative
+- Important practical reading:
+  - the current blocker is no longer "can RL participate at all?"
+  - the current blocker is:
+    - inventory/risk management
+    - closing behavior
+    - robustness across unseen seeds
+
+### Current Design Conclusions
+
+- We are now in a much stronger position than before:
+  - market infrastructure is solid
+  - charting / live diagnostics are useful
+  - maker-v2 stabilized liquidity meaningfully
+  - PPO can participate as a real market actor
+- The next priority is no longer basic activation of PPO.
+- The next priority is:
+  - make PPO robust across different seeds / market realizations
+  - then improve reward shaping so it closes positions more intelligently instead of leaning long too often
+
+### Immediate Next Direction
+
+- Multi-seed RL training is now justified.
+- Earlier in the project, multi-seed training was deferred because PPO was not yet producing meaningful market behavior even on one fixed seed.
+- That condition has changed:
+  - PPO now trades
+  - PPO changes liquidity and activity materially
+  - PPO shows a clear difference between seen-seed and unseen-seed performance
+- Therefore the next step should be:
+  - train on multiple seeds
+  - evaluate on held-out seeds
+  - compare whether the policy becomes less regime-specific
+
+### Deferred But Important Future Direction
+
+- We discussed adding more agents and eventually moving from spot-only to a futures-like market with shorting.
+- Current decision:
+  - **do not** add more agents immediately
+  - **do not** switch to futures immediately
+- Reason:
+  - the current 4-agent spot ecology has only just become interpretable and trainable
+  - unseen-seed robustness is not solved yet
+  - futures / shorting would introduce a major new layer:
+    - margin logic
+    - liquidation / leverage dynamics
+    - different ruin mechanics
+    - more complex reward / risk behavior
+- However, this remains an important later milestone because:
+  - spot-only agents cannot profit from downward markets via shorting
+  - a futures-style environment would be more expressive for studying richer strategic behavior
