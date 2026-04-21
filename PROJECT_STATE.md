@@ -498,9 +498,16 @@ What exists:
   - the agents panel now exposes a dedicated RL diagnostics block when a runtime PPO checkpoint is active
   - it shows decision counts, action-type counts, recent RL order events, and a compact portfolio snapshot for the PPO-controlled slot
   - this is the main observability tool for Phase A because it lets us tell apart "inactive", "placing non-filling passive orders", and "actually trading"
+  - the live session now uses the shared `RuntimePolicyControlledAgent` path, so these counters come from the same runtime agent used by the RL boundary rather than from a stale live-only PPO proxy
 - RL slot inventory override:
   - the runtime-replaced PPO slot now defaults to `0.0` starting inventory in training, evaluation, and live-view playback
   - this keeps the RL agent flat at episode start so any later PnL must come from actual decisions rather than inherited inventory drift
+- RL reward shaping:
+  - reward now supports two optional inventory controls:
+    - linear absolute inventory penalty
+    - quadratic inventory-risk penalty
+  - both default to `0.0`, so previous behavior is preserved unless explicitly changed
+  - first quadratic-risk Phase A run at `0.0005` is now part of the RL findings below
 - first experiment convention now locked:
   - keep the scripted market unchanged
   - replace `trend_01` at runtime with the RL controller for the RL run
@@ -613,33 +620,139 @@ Current Phase A checkpoint:
 - horizon: `5000`
 - PPO timesteps: `50000`
 
-What the first long scripted-only vs PPO comparison shows:
+What the Phase A evidence now shows:
 
-- PPO is definitely affecting the market:
-  - trades drop from `2252` to `1697` (`-24.6%`)
-  - spread availability rises from `0.382` to `0.455`
-  - mean spread narrows slightly from `0.2400` to `0.2181`
-  - midpoint volatility falls from `10.43` bps to `9.21` bps
-- the market becomes quieter and slightly more orderly, not more chaotic
-- `trend_01` still looks too passive:
-  - cash stays at `10000`
-  - inventory stays at `16`
-  - open orders stay `0`
-  - this strongly suggests a hold-heavy or near-inactive policy
-- first Phase A adjustment now implemented:
-  - the RL-controlled slot starts with `0` inventory by default
-  - this is the first clean attempt to force PPO to express a real trading policy before moving to multi-seed training
-- so the first long-run PPO result is:
-  - technically successful
-  - scientifically useful
-  - but not yet a convincing learned trading strategy
+- first long PPO run from the original inherited-inventory setup:
+  - PPO affected the market
+  - but mostly by becoming too passive and removing directional pressure
+- second long PPO run with the RL slot starting flat (`0` inventory):
+  - PPO is no longer passive
+  - but it learned a one-sided pathological behavior:
+    - repeated limit buys
+    - frequent cancels/reposts
+    - almost no selling
+    - large inventory accumulation
+- corrected zero-inventory evaluation now matters:
+  - from its true flat start, `trend_01` ends positive (`+394.53`)
+  - so the issue is not "PPO only loses money"
+  - the issue is that PPO is finding a profitable but market-breaking inventory-hoarding behavior
+- market-level impact of that zero-inventory PPO run:
+  - trades collapse from `2252` to `80`
+  - spread availability drops from `0.382` to `0.049`
+  - top-of-book liquidity rises because the buy side becomes abnormally deep
+  - final total system equity drops by about `1366`
+  - final midpoint remains far below the final latent fundamental
+- important nuance for thesis framing:
+  - price diverging from the latent fundamental is not automatically "bad" in the final all-AI market vision
+  - but in this specific Phase A run the divergence appears together with a near-broken one-sided market, so it is better interpreted as a degenerate policy than as an interesting emergent ecology
+- third long PPO run with flat start plus quadratic inventory-risk penalty (`0.0005`):
+  - PPO appears to over-correct away from inventory hoarding
+  - live-view inspection suggests a cancel-heavy / non-participatory policy
+  - scripted-vs-RL comparison confirms that `trend_01` ends effectively flat:
+    - ending cash `10000`
+    - ending inventory `0`
+    - ending PnL `0.00`
+    - open orders `0`
+  - the market still differs from the scripted baseline because removing the trend participant changes the ecology, but the PPO slot no longer appears to express a meaningful trading policy
+  - interpretation:
+    - the quadratic risk penalty can suppress the buy-hoarding exploit
+    - but by itself it creates a new trivial "stay away from the market" exploit
+- latest Phase A reward redesign is now implemented:
+  - the RL environment now uses `realized_pnl_delta` as the primary reward signal by default
+  - equity-delta shaping is still available, but defaults to `0.0`
+  - inactivity penalty is now available as an explicit reward-shaping tool
+  - linear and quadratic inventory penalties still exist, but both remain optional and default to `0.0`
+  - the env now reports richer RL step diagnostics:
+    - `previous_realized_pnl`
+    - `current_realized_pnl`
+    - `realized_pnl_delta`
+    - `learning_agent_trade_count`
+    - `inactivity_penalty_applied`
+  - training / evaluation CLIs were updated to expose this reward surface directly
+  - focused verification passed after the redesign:
+    - `40` targeted RL/live-session tests passed
+- latest live-view diagnosis after the realized-PnL + inactivity run:
+  - the PPO slot still did not produce real trades
+  - live-view inspection showed repeated `limit_sell`-like behavior with zero inventory
+  - the apparent stream of RL `CANCEL` events was misleading:
+    - policy counters reflected requested actions
+    - the event table reflected simulator-side cancel/reject events
+  - this means the agent was likely requesting invalid sell intents rather than truly executing cancel-oldest as its main policy
+- invalid-action masking is now implemented:
+  - invalid sell actions with insufficient inventory are masked to `hold`
+  - invalid `cancel_oldest` actions with no open orders are masked to `hold`
+  - runtime RL diagnostics now distinguish:
+    - effective action counts
+    - requested action counts
+    - masked / invalid action counts
+    - last requested action type
+    - invalid reason
+  - the RL viewer now exposes masked-decision visibility so Phase A interpretation is less ambiguous
+- the RL env/action layer has now been simplified for Phase A:
+  - the training-facing gym wrapper defaults to a smaller action space:
+    - `hold`
+    - `market_buy`
+    - `market_sell`
+    - `limit_buy`
+    - `limit_sell`
+  - `cancel_oldest` is removed from the default Phase A training action set
+  - fixed quantity and fixed limit offset are now explicit env settings, defaulting to `1` and `1`
+  - the gym wrapper now exposes a state-dependent valid action mask for the current observation
+  - this means the env is now ready for a future switch to true mask-aware PPO without another env rewrite
+- MaskablePPO Phase A integration is now in place on the train/eval script side:
+  - `scripts/train_rl_agent.py` now supports:
+    - `--algorithm ppo|maskable_ppo`
+    - explicit Phase A action-space flags
+    - explicit cancel-action inclusion
+    - fixed quantity / fixed limit-offset controls
+  - `scripts/eval_rl_agent.py` now supports:
+    - `--algorithm auto|ppo|maskable_ppo`
+    - sidecar-based algorithm auto-detection from the training metadata JSON
+    - mask-aware evaluation when a MaskablePPO checkpoint is loaded
+  - `sb3-contrib` is now part of the RL dependency surface in:
+    - `pyproject.toml`
+    - `requirements.txt`
+  - practical current note:
+    - the next clean test path is training + evaluation + comparison first
+    - live-view playback for MaskablePPO checkpoints is not yet the primary validated path, because the recent work focused on the training/eval integration boundary
+- current interpretation after that redesign:
+  - post-hoc invalid-action masking to `hold` was a useful diagnostic step
+  - but by itself it is too blunt as a learning setup because invalid sell requests can still collapse into apparent inactivity
+  - the simplified Phase A action space is meant to reduce this failure mode before we widen the policy language again
+- latest live-view diagnosis after the first MaskablePPO Phase A run:
+  - the PPO slot is now clearly active again
+  - but it can still learn another one-sided degenerate behavior:
+    - repeated `market_buy`
+    - no meaningful selling
+    - accumulation only when sell liquidity appears
+  - this exposed a second important env-design issue:
+    - the RL feature vector previously hid empty-book state by falling back from missing `best_bid` / `best_ask` to the midpoint
+    - so the model was not told explicitly when one side of the book was empty
+  - Phase A env validity is now tightened again:
+    - `market_buy` is invalid when there is no ask liquidity
+    - `market_sell` is invalid when there is no bid liquidity
+    - explicit `has_best_bid` / `has_best_ask` features are now part of the RL observation
+  - consequence:
+    - old PPO / MaskablePPO checkpoints trained on the previous 16-feature observation space should now be treated as obsolete for Phase A
+    - the next training run should start from a fresh checkpoint on the new 18-feature observation surface
 
 Interpretation:
 
 - the RL boundary is working
 - the comparison tooling is working
 - replacing one scripted slot materially changes the market
-- but current PPO behavior still looks more like "remove directional pressure" than "trade intelligently"
+- PPO is now active enough to study
+- but current PPO behavior still looks degenerate in both directions:
+  - without risk shaping: profitable one-sided buy-hoarding
+  - with quadratic risk shaping at `0.0005`: cancel-heavy / near-flat non-participation
+  - with first-pass MaskablePPO and no empty-book aggressive masking: repeated market-buy pressure whenever ask liquidity appears
+- the new Phase A hypothesis is now sharper:
+  - inventory punishment alone is not enough
+  - valid-action masking must also reflect available market liquidity, not only inventory and open-order constraints
+  - the RL model needs explicit visibility into whether bid / ask liquidity exists at all
+  - the current realized-PnL-led reward plus optional inactivity penalty is still the right reward path, but it now has to run on the improved liquidity-aware observation/mask surface
+  - that experiment should still run on the simplified Phase A action space with no cancel action and fixed size/offset defaults
+  - the env now exposes valid action masks, and the train/eval scripts support a true MaskablePPO path rather than more post-hoc hold substitution
 
 Phase A / Phase B are now clearer:
 
@@ -656,21 +769,42 @@ Phase A / Phase B are now clearer:
 
 ## Current Recommended Next Step
 
-Use the new RL diagnostics to understand why PPO is still too passive before expanding to Phase B.
+Run one more single-seed Phase A PPO experiment with the new reward path and the new liquidity-aware action mask before expanding to Phase B.
 
 Priority order:
 
-1. Inspect the PPO-controlled `trend_01` slot in the live viewer using the RL-only diagnostics block
-2. Quantify the actual action mix during evaluation:
+1. Train PPO again with:
+   - flat start (`0` inventory)
+   - realized-PnL-led reward
+   - no quadratic inventory-risk penalty
+   - a small inactivity penalty
+   - simplified Phase A action space:
+     - no cancel action
+     - fixed quantity / limit offset
+   - liquidity-aware masking:
+     - no `market_buy` without asks
+     - no `market_sell` without bids
+   - liquidity-presence observation features:
+     - `has_best_bid`
+     - `has_best_ask`
+   - true MaskablePPO enabled in training/evaluation
+2. Evaluate and compare the new MaskablePPO checkpoint before doing more reward tweaks
+3. Quantify the actual action mix during evaluation:
    - hold
    - market actions
    - limit actions
+   - masked invalid actions
    - cancel actions
-3. Decide whether the current reward/action-space design is too conservative for Phase A
-4. If PPO becomes meaningfully active:
+4. Only after the eval/compare results look promising, add live-view inspection back into the loop
+5. Do not move to multi-seed yet; Phase A is still unresolved
+6. Treat the quadratic inventory-risk penalty as insufficient by itself:
+   - it removes hoarding
+   - but it pushes PPO into a cancel/flat/no-op policy
+7. The next reward iteration should encourage meaningful participation rather than only punishing inventory
+8. If PPO becomes meaningfully active without breaking the market:
    - move to multi-seed training
    - evaluate on unseen seeds
-5. If PPO remains near-inactive:
+9. If PPO remains degenerate or near-inactive:
    - adjust reward / action-space / diagnostics before starting Phase B
 
 ## Current Risks / Issues
@@ -883,3 +1017,174 @@ Current useful entrypoints:
 Goal:
 
 - confirm that the scripted market is stable enough to justify adding the first RL agent
+
+## Chronological Research Log
+
+This section is the chronological history of the important RL / market-ecology implementation steps and the main findings from each one.
+
+### Scripted Market Foundation
+
+- We first built the deterministic synthetic market with:
+  - one asset
+  - central limit order book
+  - spot-only portfolio accounting
+  - hidden fundamental
+  - public news
+  - scripted agent ecology
+- The live viewer, health-report CLI, and compare tools were then added so market behavior could be inspected visually and compared scientifically.
+- Key early result:
+  - fixed preset + seed + horizon produced reproducible runs across the live viewer and health scripts
+  - this confirmed that scripted-only vs scripted+RL comparisons would be scientifically meaningful later
+
+### Scripted Regime Validation
+
+- We added scenario presets:
+  - `baseline`
+  - `fragile_liquidity`
+  - `high_information_asymmetry`
+  - `high_news`
+- We used health summaries and live-view testing to validate whether these regimes were truly distinct.
+- Main conclusions:
+  - `baseline` became the control world
+  - `fragile_liquidity` was clearly distinct
+  - `high_information_asymmetry` was clearly distinct
+  - `high_news` initially was not distinct enough, then was reworked so it differed through stronger market/news impact rather than just horizon assumptions
+
+### First RL Boundary
+
+- We introduced the first single-agent RL boundary by replacing `trend_01` at runtime only.
+- This preserved the scripted market while allowing a clean comparison:
+  - scripted-only world
+  - same world with one RL-controlled slot
+- We added:
+  - training script
+  - evaluation script
+  - compare tooling
+  - live-view PPO playback
+- Early PPO result:
+  - the RL slot changed the market
+  - but the first policy was mostly too passive
+
+### Zero-Inventory RL Start
+
+- We changed the RL slot to start flat (`0` inventory) so any later PnL had to come from actual decisions rather than inherited position drift.
+- This successfully woke the agent up.
+- New failure mode:
+  - the agent became active
+  - but learned a one-sided buy-hoarding behavior
+  - it accumulated inventory, distorted the book, and damaged market quality
+
+### Inventory-Risk Penalty Experiment
+
+- We then added quadratic inventory-risk shaping to discourage hoarding.
+- Result:
+  - this removed the buy-hoarding exploit
+  - but pushed PPO toward a trivial non-participatory / cancel-heavy / flat policy
+- Conclusion:
+  - inventory punishment alone is not enough
+  - it suppresses bad accumulation, but does not teach healthy participation
+
+### Realized-PnL Reward Redesign
+
+- Reward was redesigned so realized PnL became the primary signal, with inactivity penalty available and inventory penalties optional.
+- This was meant to encourage opening and closing positions rather than drifting on mark-to-market gains.
+- New observation:
+  - the RL slot was still choosing many invalid or non-productive actions
+  - so reward redesign alone was not enough
+
+### Invalid-Action Visibility And Simplified Phase A Action Space
+
+- We added diagnostics that distinguish:
+  - requested action
+  - effective action
+  - masked invalid actions
+  - invalid reasons
+- We simplified Phase A by removing `cancel_oldest` from the default training action set and fixing quantity / limit offset.
+- This reduced the number of degenerate policy loops and made the RL diagnostics much easier to interpret.
+
+### MaskablePPO Integration
+
+- We switched the Phase A training/evaluation path to support `MaskablePPO`.
+- This allowed the policy to sample only valid actions instead of relying only on post-hoc conversion to `hold`.
+- New observation:
+  - this improved validity handling
+  - but the first MaskablePPO policies still found one-sided behaviors rather than balanced trading
+
+### Liquidity-Aware RL Masking
+
+- We discovered that the RL feature vector was hiding empty-book state by replacing missing `best_bid` / `best_ask` with the midpoint.
+- We fixed this by:
+  - adding `has_best_bid`
+  - adding `has_best_ask`
+  - masking `market_buy` when there is no ask liquidity
+  - masking `market_sell` when there is no bid liquidity
+- Conclusion:
+  - RL now has a cleaner notion of whether aggressive market action is even feasible
+  - this was necessary because otherwise the model could spam aggressive actions into a one-sided or empty book
+
+### Current Market-Ecology Finding
+
+- The current important live-view finding is broader than the RL slot alone:
+  - the market can enter a one-sided state where bids remain but asks disappear
+  - volume can go to zero for a long time
+  - retail and informed agents can run out of inventory and stop supplying the sell side
+  - the RL agent is currently also not providing healthy sell-side recycling
+  - the market maker does not rescue the ask side aggressively enough
+- Important clarification:
+  - the chart can still move during these zero-volume regimes because the simulator currently falls back from missing midpoint to the latent fundamental when writing the displayed price series
+  - so the chart is not currently a pure "last traded price" chart
+
+### Chart Semantics Fix
+
+- We decided that the main live chart should follow the latest traded price, not midpoint-or-fundamental fallback.
+- Implemented change:
+  - the simulator now keeps the chart price series as the latest traded price
+  - if no new trade occurs, the chart price stays flat
+  - midpoint is still retained separately in the live payload for market-state interpretation
+  - fundamental remains a separate series
+- Consequence:
+  - dead / frozen markets should now look dead on the main chart instead of appearing to drift with the latent fundamental
+
+### Step-Based Timeframe Selector
+
+- After the chart-price fix, we added a step-based timeframe selector to the live viewer.
+- This behaves like TradingView-style candle aggregation, but in simulator steps rather than real clock time.
+- Current viewer options:
+  - `1`
+  - `5`
+  - `10`
+  - `25`
+  - `50`
+  - `100`
+- Implementation detail:
+  - aggregation is done client-side from the per-step chart series
+  - candles now rebuild OHLC from the traded-price series
+  - flat / no-trade periods naturally collapse into line-like candles
+- Goal:
+  - keep microstructure visible at small step windows
+  - make broader market regimes easier to inspect at larger aggregation windows
+
+### Current Interpretation
+
+- The current blocker is no longer only "make RL active."
+- The deeper problem is:
+  - market ecology can freeze into a bid-only, zero-volume state
+  - the chart semantics can partially hide that freeze by falling back to the fundamental
+  - the market maker is still too passive and inventory-anchor-based to restore two-sided liquidity reliably
+
+### Current Recommended Direction
+
+- The next design wave should focus on liquidity health, not only PPO training length.
+- Strong candidates:
+  - chart semantics:
+    - make the main chart track latest traded price
+    - if no new trade occurs, the chart should flatline rather than silently following the fundamental
+    - midpoint and fundamental should remain visible as separate series when useful
+  - market-maker redesign:
+    - require persistent two-sided quoting when resources allow
+    - add an emergency inventory-offload behavior when the maker is long and buy-side liquidity is deep
+    - allow more aggressive ask replenishment when the ask side disappears
+  - non-maker inventory recycling:
+    - informed / retail / trend policies should be more willing to sell out of long inventory rather than only accumulate
+    - positions should have clearer exit logic
+- Phase A RL work should continue, but now with the understanding that a market-liquidity redesign is likely required in parallel.
