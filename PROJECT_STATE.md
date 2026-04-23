@@ -1415,3 +1415,120 @@ This section is the chronological history of the important RL / market-ecology i
 - However, this remains an important later milestone because:
   - spot-only agents cannot profit from downward markets via shorting
   - a futures-style environment would be more expressive for studying richer strategic behavior
+
+### Multi-Seed Training Support
+
+- After the fresh maker-v2 PPO results, we decided the project had reached the point where multi-seed training was justified.
+- Reason:
+  - PPO now participates meaningfully
+  - PPO buys and sells in the market
+  - the main weakness is no longer "basic activation"
+  - the main weakness is robustness across unseen seeds
+- Implemented change:
+  - the RL environment now supports an explicit `train_seeds` schedule
+  - if a seed list is provided, each reset cycles deterministically through that list
+  - if no seed list is provided, the previous auto-increment / single-seed behavior remains available
+- Training-script support:
+  - `scripts/train_rl_agent.py` now accepts `--train-seeds`
+  - training metadata now records the explicit multi-seed schedule used for the checkpoint
+- Important implementation detail:
+  - the environment no longer silently consumes the first scheduled seed during constructor bootstrap
+  - the first real training reset now starts on the first requested seed
+- Current interpretation:
+  - we now have the minimum infrastructure needed for:
+    - train on multiple seeds
+    - evaluate on held-out seeds
+    - compare whether PPO becomes less regime-specific
+
+### First Multi-Seed PPO Results
+
+- We trained the first explicit multi-seed PPO policy on the updated maker-v2 baseline market.
+- Seed curriculum used during training:
+  - `1,2,3,4,5,6,7,8`
+- Evaluation was then run on:
+  - seen seeds:
+    - `7`
+    - `8`
+  - unseen seeds:
+    - `20`
+    - `21`
+    - `22`
+
+### Multi-Seed PPO Behavioral Change
+
+- Main qualitative finding from the live viewer:
+  - the multi-seed PPO policy is noticeably more conservative than the earlier single-seed PPO policy
+  - it still buys a lot
+  - but it now sells much more often as well
+  - it still appears to prefer selling via limit orders rather than market sells
+- Interpretation:
+  - multi-seed training improved behavioral robustness
+  - PPO is no longer only learning a narrow, one-seed trading rhythm
+  - it is learning a more stable participation style
+
+### Multi-Seed PPO Seen-Seed Results
+
+- On seen seeds (`7` and `8`), the multi-seed policy:
+  - still increased trade count materially over scripted baseline
+  - still improved spread availability and top-of-book occupancy strongly
+  - generally reduced volatility relative to the scripted baseline
+- However, the RL-controlled `trend_01` no longer outperformed on PnL.
+- In both seen-seed evaluations:
+  - the RL slot ended with much smaller inventory than the scripted trend baseline
+  - the RL slot held much more cash
+  - but the RL slot’s final equity / PnL was much worse than scripted trend
+- Interpretation:
+  - multi-seed training improved robustness and participation style
+  - but it made the policy more conservative and less profitable
+
+### Multi-Seed PPO Unseen-Seed Results
+
+- On unseen seeds (`20`, `21`, `22`), the same pattern continued:
+  - trade count increased materially over scripted baseline
+  - spread availability improved materially
+  - top-of-book occupancy improved materially
+  - volatility generally decreased
+- But across all unseen seeds:
+  - final total equity of the market remained worse than the scripted-only baseline
+  - the RL-controlled `trend_01` underperformed badly relative to scripted trend
+  - the RL slot carried much smaller inventory and much higher cash than scripted trend
+- Interpretation:
+  - the policy now generalizes much better in **participation**
+  - but it still does not generalize well in **profitability**
+
+### Current Multi-Seed PPO Conclusion
+
+- Multi-seed training was still the right move.
+- It appears to have solved an important research problem:
+  - PPO behavior is now more stable and less pathologically seed-specific
+- But it also made the current limitation clearer:
+  - the policy participates more robustly than before
+  - yet it still fails to extract good value for itself
+  - and it does not exploit or react to downside states strongly enough
+
+### Current Market-Ecology Conclusion
+
+- The current remaining issue is no longer just the RL reward.
+- A deeper ecology issue is still visible in the live viewer:
+  - there are still periods where very few agents want to sell
+  - even when the latent fundamental is well below the traded price
+  - scripted agents can remain too reluctant to provide downward pressure
+- Important interpretation:
+  - maker-v2 improved liquidity survival
+  - PPO multi-seed training improved behavioral robustness
+  - but the **scripted sell side is still too weak**
+
+### Immediate Next Direction After Multi-Seed PPO
+
+- The next likely improvement wave should focus on scripted sell behavior / downside reaction.
+- Most promising targets:
+  - informed trader:
+    - stronger sell response when price is above fundamental or news is negative
+  - noise trader:
+    - better inventory recycling so it does not remain too buy-dominant
+  - market maker:
+    - keep current two-sided restoration, but potentially lean asks more strongly when price looks rich
+- Current decision:
+  - do **not** change the RL architecture yet
+  - do **not** move to futures yet
+  - first improve scripted sell pressure in the spot ecology
