@@ -1727,3 +1727,81 @@ This section is the chronological history of the important RL / market-ecology i
   - retrain PPO in the healthier scripted market
   - compare seen and unseen seeds again
   - only then decide whether more scripted tuning, more agents, or larger market-structure changes are needed
+
+### PPO Retrain In Improved Scripted Ecology
+
+- We retrained the multi-seed PPO agent after the scripted sell-pressure waves were in place.
+- Training setup:
+  - baseline preset
+  - RL agent still replacing `trend_01`
+  - multi-seed training across `1,2,3,4,5,6,7,8`
+  - evaluation on both seen and unseen seeds
+- Result:
+  - the new PPO checkpoint is now clearly stronger than earlier PPO generations
+  - it no longer looks like a dead/no-op policy or a simple one-sided hoarding failure
+  - it appears to have learned a coherent market-winning behavior in the current spot ecology
+
+### Seen-Seed PPO Result After Retrain
+
+- On the seen-seed comparison (`seed=7`, `horizon=10000`):
+  - PPO underperformed the new scripted market on total market activity:
+    - `trades 5094 -> 3619`
+    - `spread_availability 0.594 -> 0.421`
+  - but the RL-controlled `trend_01` itself strongly outperformed the scripted trend baseline:
+    - scripted `trend_01` PnL: `-279.89`
+    - RL `trend_01` PnL: `+892.50`
+  - the RL slot accumulated meaningfully more inventory than the scripted trend:
+    - scripted inventory: `1`
+    - RL inventory: `37`
+- Interpretation:
+  - PPO is not improving the ecology at the market-wide level here
+  - but it is improving the competitive outcome of the replaced participant
+  - the learned policy appears to accumulate inventory and monetize later exits better than the scripted trend baseline
+
+### Unseen-Seed PPO Result After Retrain
+
+- On the unseen-seed comparison (`seed=20`, `horizon=10000`):
+  - PPO again reduced aggregate activity relative to the improved scripted market:
+    - `trades 5057 -> 3514`
+    - `spread_availability 0.581 -> 0.419`
+  - yet the RL-controlled `trend_01` again strongly outperformed the scripted trend baseline:
+    - scripted `trend_01` PnL: `-381.78`
+    - RL `trend_01` PnL: `+1091.73`
+  - inventory concentration remained high:
+    - scripted inventory: `7`
+    - RL inventory: `78`
+- Interpretation:
+  - the PPO policy generalizes its participant-level edge to at least one unseen seed
+  - this is an important milestone: PPO is no longer only "participating"; it is now actually winning versus the scripted replacement baseline
+  - however, it seems to do so partly by becoming the dominant inventory holder / liquidity controller
+
+### Current Reading Of PPO Strategy
+
+- Live-view interpretation and metric behavior suggest a consistent PPO style:
+  - aggressively acquire inventory, often via market buys
+  - hold inventory while other participants deplete supply
+  - sell mainly through passive limit orders when demand later reappears
+- This likely explains why:
+  - market sells from PPO remain rare
+  - price can stay artificially flat even when the latent fundamental weakens
+  - PPO can still outperform the scripted trend baseline while leaving the broader ecology less active
+- Important nuance:
+  - PPO is "smart" relative to the current market ecology, not necessarily "realistic" yet
+  - it appears to exploit the fact that most other participants are still too constrained, too spot-only, and too easy to buy out
+
+### Current Strategic Conclusion After PPO Retrain
+
+- This PPO version is worth saving as a milestone.
+- It demonstrates:
+  - participant-level PPO competitiveness
+  - seen/unseen generalization of the learned edge
+  - a clear learned strategic style rather than random activity
+- But it also exposes the next structural limitation of the market:
+  - too few participants can continue to supply or sell once PPO corners inventory
+  - spot-only constraints make it impossible for agents to express bearish views unless they already hold supply
+- Therefore, the next research/design frontier should move from "can PPO learn?" to:
+  - how to make the ecology harder, richer, and more realistic
+- Candidate next directions now considered plausible:
+  - add stronger / smarter opposing participants
+  - add additional AI agents
+  - eventually move toward a futures / long-short market structure so agents can always express sell-side views
