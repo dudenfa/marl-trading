@@ -1532,3 +1532,198 @@ This section is the chronological history of the important RL / market-ecology i
   - do **not** change the RL architecture yet
   - do **not** move to futures yet
   - first improve scripted sell pressure in the spot ecology
+
+### Scripted Sell-Pressure Wave 1: Informed Trader
+
+- We started the scripted sell-behavior improvements one agent at a time, beginning with the informed trader.
+- Reason:
+  - this is the cleanest place to strengthen "price is rich, sell harder" behavior without muddying the rest of the ecology
+  - it directly addresses the observed problem where price can remain above the latent fundamental without enough downside pressure
+- Implemented change:
+  - informed trader now has stronger sell asymmetry through three new knobs:
+    - `sell_bias`
+    - `negative_news_sell_bias`
+    - `inventory_pressure`
+  - behaviorally, the informed trader now sells more decisively when:
+    - price is above fundamental
+    - negative news hits while it is long
+    - it is carrying inventory into an overpriced state
+- Backward-compatible config support was added through `InformedTraderBehaviorConfig`, and simulator wiring now passes the new knobs through when configured.
+- Initial verification:
+  - focused scripted/config tests passed
+  - quick baseline health smoke run remained active
+- The next step is to test this wave in:
+  - scripted-only baseline runs
+  - then the existing RL market setup, to see whether no-seller / weak-downside episodes become rarer before touching retail or trend
+
+### Scripted Sell-Pressure Wave 1 Results
+
+- We evaluated the first informed-trader sell-pressure wave in both scripted-only and RL-inserted baseline runs.
+- Scripted-only baseline (`seed=7`, `horizon=10000`) remained healthy and active:
+  - `trades=3472`
+  - `spread_availability=0.428`
+  - `mean_spread=0.0987`
+  - `final_total_equity=52581.90`
+- In that scripted-only run:
+  - `informed_01` finished strongly positive and fully sold out of inventory
+  - `maker_01` retained some inventory instead of fully emptying out
+  - `trend_01` was still the strongest long accumulator
+- Interpretation:
+  - the informed-trader change did not destabilize the baseline market
+  - it appears to have increased sell-side/value-realization behavior without breaking activity
+
+### RL Regression After Informed-Trader Change
+
+- We then re-ran the existing multi-seed RL checkpoint in the updated ecology.
+- On the tested RL comparison (`baseline`, `seed=20`, `horizon=10000`):
+  - trades still increased over scripted baseline:
+    - `2684 -> 3141`
+  - spread availability still improved strongly:
+    - `0.310 -> 0.757`
+  - but final total equity remained much worse than scripted baseline:
+    - `51517.24 -> 48426.34`
+  - the RL-controlled `trend_01` still underperformed badly
+- Interpretation:
+  - the informed-trader sell improvement is directionally useful
+  - but it is not sufficient on its own to solve the no-seller / weak-downside episodes
+
+### Updated Ecology Diagnosis
+
+- The live viewer showed an important remaining failure mode:
+  - latent fundamental can move well below traded price
+  - `informed_01` may already be fully out of inventory
+  - `maker_01`, `retail_01`, and the RL slot can still hold substantial inventory
+  - yet sell pressure can still remain too weak or too passive
+- Important reading:
+  - once the informed trader has already sold out, it cannot keep anchoring price downward
+  - this means the remaining problem is now a broader ecology issue, not just an informed-trader issue
+
+### Current Conclusion After Wave 1
+
+- The informed-trader sell-pressure change was good and worth keeping.
+- It passed the first sanity check:
+  - baseline stayed healthy
+  - the change moved the ecology in the right direction
+- But it did not finish the job.
+- The next likely scripted targets should therefore be:
+  - `retail_01`:
+    - better inventory recycling / more willingness to sell into strength or when long
+  - `trend_01` scripted baseline:
+    - better long-exit logic when momentum weakens or price looks rich
+- Current preferred sequencing:
+  - continue improving scripted sell behavior agent-by-agent
+  - then retrain / re-evaluate the RL agent in the healthier ecology
+
+### Scripted Sell-Pressure Wave 2: Retail / Noise Trader
+
+- We then applied the second scripted sell-pressure wave to `retail_01`.
+- Design goal:
+  - keep retail simple and non-intelligent
+  - but make it recycle inventory more often instead of remaining structurally too buy-dominant
+- Implemented change:
+  - retail now has configurable sell-leaning terms for:
+    - base sell bias
+    - inventory recycling
+    - selling when price looks rich versus fundamental
+    - simple profit-taking into positive recent returns
+- New retail-side knobs:
+  - `sell_bias`
+  - `inventory_recycling_bias`
+  - `overpricing_sell_bias`
+  - `profit_taking_bias`
+- Compatibility:
+  - defaults preserve the original retail personality as much as possible
+  - these new terms only tilt side choice; they do not turn retail into a value agent
+- Initial verification:
+  - focused scripted/config tests passed
+  - quick baseline smoke run stayed active
+- Next validation target:
+  - re-check whether the "nobody wants to sell" episodes become rarer
+  - especially when informed is already flat and maker / retail inventory is still elevated
+
+### Scripted Sell-Pressure Wave 3: Trend Follower
+
+- We then applied the third scripted sell-pressure wave to the scripted `trend_01` baseline agent.
+- Design goal:
+  - stop trend from remaining a persistent long accumulator with weak exit behavior
+  - make it unwind stale longs when momentum weakens or when price looks rich versus fundamental
+- Implemented change:
+  - trend now has configurable exit terms for:
+    - weaker negative-momentum exit threshold
+    - exit pressure when price is above fundamental
+    - stronger sell quantity scaling when it is already holding inventory
+- New trend-side knobs:
+  - `exit_threshold_bps`
+  - `overpricing_exit_bias`
+  - `inventory_pressure`
+- Compatibility:
+  - defaults preserve the original trend-following personality as much as possible
+  - this wave is about better exits from longs, not converting trend into an informed/value agent
+- Initial verification:
+  - focused scripted/config tests passed
+  - quick baseline smoke run stayed active
+- Immediate next validation target:
+  - re-run the scripted-only baseline
+  - re-run the current RL checkpoint in the improved ecology
+  - then decide whether the environment is ready for PPO retraining
+
+### Scripted Sell-Pressure Wave 3 Results
+
+- We evaluated the scripted trend-follower exit update in both scripted-only and RL-inserted baseline runs.
+- Scripted-only baseline (`seed=7`, `horizon=10000`) remained very active and substantially healthier than earlier phases:
+  - `trades=5094`
+  - `spread_availability=0.594`
+  - `mean_spread=0.1089`
+  - `final_total_equity=52079.51`
+  - `final_midpoint=128.9450`
+  - `final_fundamental=128.5054`
+- In that scripted-only run:
+  - `maker_01` ended strongly positive while still holding some inventory
+  - `informed_01` remained the strongest performer, which is believable given its structural informational edge
+  - `retail_01` ended with much lower inventory than before
+  - scripted `trend_01` no longer acted like a persistent long-inventory sink:
+    - `inventory 16 -> 1`
+    - realized and unrealized exposure were both very small by the end
+- Interpretation:
+  - the trend exit change achieved its main ecology goal
+  - the scripted baseline now has much stronger natural inventory recycling and better price/fundamental alignment
+
+### RL Comparison After Trend-Follower Change
+
+- We then re-ran the current multi-seed PPO checkpoint in the improved scripted ecology.
+- On the tested RL comparison (`baseline`, `seed=20`, `horizon=10000`):
+  - trades were now lower than the improved scripted-only baseline:
+    - `5057 -> 4272`
+  - spread availability still improved slightly:
+    - `0.581 -> 0.637`
+  - final total equity was still worse than scripted-only:
+    - `50896.01 -> 49251.10`
+  - the RL-controlled `trend_01` still underperformed the new scripted baseline agent badly
+- Interpretation:
+  - this does not mean PPO is failing in absolute terms
+  - it means the scripted benchmark has materially improved, while the PPO checkpoint is stale because it was trained in an older ecology
+
+### Current Ecology Reading After Waves 1-3
+
+- The scripted environment is now in a meaningfully better place:
+  - informed trader sell/value behavior improved
+  - retail inventory recycling improved
+  - scripted trend long-exit behavior improved
+  - the market remains active, interpretable, and much less dominated by one-way inventory accumulation
+- Remaining notes:
+  - trade-price candles still look step-like / flat-then-jump in places, which is expected in a small discrete agent ecosystem
+  - `maker_01` can still take inventory and PnL pain while acting as the liquidity stabilizer
+  - `informed_01` often outperforms other participants, which is plausible because it has the strongest structural informational edge
+
+### Current Conclusion After Waves 1-3
+
+- Keep all three scripted sell-pressure changes:
+  - informed trader
+  - retail / noise trader
+  - scripted trend follower
+- Do not re-edit the market maker yet.
+- The next correct step is to retrain the multi-seed PPO agent in this improved ecology.
+- Current strategic sequencing:
+  - retrain PPO in the healthier scripted market
+  - compare seen and unseen seeds again
+  - only then decide whether more scripted tuning, more agents, or larger market-structure changes are needed
