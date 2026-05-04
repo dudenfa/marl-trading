@@ -1913,3 +1913,88 @@ This section is the chronological history of the important RL / market-ecology i
 - This is not meant to imitate PPO behavior exactly.
 - It is meant to answer the cleaner research question:
   - does PPO outperform a reasonable scripted fifth participant in the same richer market structure?
+
+### 5-Agent Scripted Control Preset
+
+- We then implemented a dedicated scripted control preset:
+  - `baseline_trend_duo`
+- Structure:
+  - baseline scripted market
+  - plus `trend_02` as an additional fifth scripted participant
+- Important interpretation:
+  - `trend_02` is not a frozen PPO agent
+  - it is a scripted control participant cloned from the scripted `trend_01` template
+  - the purpose is to isolate the effect of "one more participant" from the effect of "one more PPO participant"
+- This preset is the immediate control for comparing:
+  - 5-agent scripted-only market
+  - 5-agent market with `rl_01`
+
+### 5-Agent Scripted Control Results
+
+- We ran the intended control experiment:
+  - left side: `baseline_trend_duo`
+    - 5 scripted agents
+    - includes `trend_02` as the extra fifth scripted participant
+  - right side: 5-agent market with PPO `rl_01`
+- This comparison is much cleaner than the earlier 4-vs-5 setup because both sides now have:
+  - the same participant count
+  - the same broad market structure
+  - only one substantive difference:
+    - scripted `trend_02`
+    - versus PPO-controlled `rl_01`
+
+### Seen-Seed Control Result
+
+- On the seen-seed comparison (`seed=7`, `horizon=10000`):
+  - PPO side improved market activity and microstructure:
+    - `trades 4975 -> 5186`
+    - `spread_availability 0.517 -> 0.589`
+    - `mean_spread 0.1136 -> 0.0851`
+  - PPO side also strongly beat the scripted fifth participant at the participant level:
+    - scripted `trend_02` PnL: `+169.81`
+    - PPO `rl_01` PnL: `+406.88`
+  - however, total system equity was lower on the PPO side:
+    - `61390.50 -> 60185.84`
+
+### Unseen-Seed Control Result
+
+- On the unseen-seed comparison (`seed=20`, `horizon=10000`):
+  - PPO side again improved market activity and microstructure:
+    - `trades 4917 -> 5265`
+    - `spread_availability 0.524 -> 0.594`
+    - `mean_spread 0.1091 -> 0.0883`
+  - PPO side again strongly beat the scripted fifth participant:
+    - scripted `trend_02` PnL: `+215.51`
+    - PPO `rl_01` PnL: `+914.10`
+  - total system equity again finished lower on the PPO side:
+    - `64152.83 -> 61655.75`
+
+### Current Interpretation After The 5-Agent Control
+
+- This experiment answered the key control question well:
+  - PPO is not only benefiting from "being the fifth body" in the market
+  - it is specifically stronger than a reasonable extra scripted participant
+- The PPO appears to be:
+  - participant-level competitive
+  - liquidity-improving
+  - but also somewhat extractive / adversarial for the rest of the ecology
+- Important reading:
+  - PPO improves trade count, spread availability, and spread tightness
+  - but does not maximize total ecosystem equity in these runs
+- This is a realistic and useful result rather than a failure:
+  - we now have evidence that PPO is strategically strong
+  - and we also see that stronger participants can make the market more active without making it better for every agent
+
+### Current Conclusion After The 5-Agent Control
+
+- The 5-agent bridge experiment succeeded.
+- The PPO `rl_01` is now validated as:
+  - stronger than the scripted trend replacement baseline
+  - stronger than the scripted fifth-agent control
+  - robust enough to remain competitive in a richer ecology
+- This gives strong justification for the next roadmap step:
+  - add a second AI-controlled participant
+- Preferred next framing:
+  - keep `rl_01` fixed first
+  - train `rl_02` against the existing scripted ecology plus frozen `rl_01`
+  - treat that as the next asymmetric bridge toward MARL
