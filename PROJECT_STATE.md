@@ -1805,3 +1805,111 @@ This section is the chronological history of the important RL / market-ecology i
   - add stronger / smarter opposing participants
   - add additional AI agents
   - eventually move toward a futures / long-short market structure so agents can always express sell-side views
+
+### Bridge To MARL Roadmap
+
+- We then agreed on a step-by-step bridge from the current single-RL-agent setup toward MARL:
+  1. keep scripted `trend_01` in the market and add the PPO agent as a fifth participant
+  2. only after studying that 5-agent ecology, add a second AI-controlled participant
+- Important framing:
+  - a 5-agent market with one PPO agent added on top of the scripted ecology is still primarily a "single learning agent in a richer multi-agent world"
+  - adding a second AI agent where one policy is frozen and the other learns is a useful asymmetric stepping stone toward MARL
+  - only when multiple AI agents learn together do we enter the stronger full-MARL regime
+- Current preferred sequencing:
+  - first implement the 5-agent bridge cleanly
+  - then evaluate the current PPO in that richer market
+  - then decide whether to train a second AI opponent or move into joint-learning work
+
+### 5-Agent RL Bridge Implementation
+
+- We implemented explicit support for adding the RL policy as a new market participant instead of only replacing an existing scripted slot.
+- New runtime/training/evaluation mode:
+  - `replace`:
+    - old behavior, PPO replaces an existing scripted slot
+  - `add`:
+    - PPO is attached to a newly added participant cloned from an existing scripted template
+- This is exposed through new CLI controls:
+  - `--add-learning-agent`
+  - `--learning-agent-template-id`
+- The intended first use is:
+  - keep scripted `trend_01`
+  - add a new PPO-controlled `rl_01`
+  - clone `rl_01` from the scripted `trend_01` template before replacing that new slot with the PPO policy at runtime
+- Verification:
+  - focused train/eval/live CLI tests passed
+  - compile checks passed
+- Immediate next validation target:
+  - run the current PPO checkpoint in the new 5-agent market
+  - compare that against the improved scripted-only baseline
+  - inspect whether keeping scripted trend alive changes PPO's inventory-control dominance
+
+### 5-Agent RL Bridge Results
+
+- We evaluated the current PPO checkpoint in a richer 5-agent market:
+  - keep scripted `trend_01`
+  - add PPO as `rl_01`
+  - `rl_01` is cloned structurally from the trend-follower template, then runtime-controlled by the PPO policy
+- This is an important bridge result because the PPO checkpoint was trained in a 4-agent replacement setting, yet still remained competitive when inserted as an extra fifth participant.
+
+### Seen-Seed 5-Agent Result
+
+- On the seen-seed comparison (`seed=7`, `horizon=10000`):
+  - trades increased slightly:
+    - `5094 -> 5186`
+  - spread availability stayed essentially unchanged:
+    - `0.594 -> 0.589`
+  - mean spread tightened:
+    - `0.1089 -> 0.0851`
+  - the new `rl_01` finished profitable:
+    - `PnL +406.88`
+  - scripted `trend_01` also improved modestly relative to the 4-agent scripted baseline
+- Interpretation:
+  - adding PPO on top of the improved scripted ecology did not destabilize the market
+  - liquidity remained strong and price action looked healthier than earlier PPO phases
+
+### Unseen-Seed 5-Agent Result
+
+- On the unseen-seed comparison (`seed=20`, `horizon=10000`):
+  - trades increased:
+    - `5057 -> 5265`
+  - spread availability improved slightly:
+    - `0.581 -> 0.594`
+  - mean spread tightened:
+    - `0.1090 -> 0.0883`
+  - the new `rl_01` again finished profitable:
+    - `PnL +914.10`
+- Interpretation:
+  - PPO appears to generalize reasonably well even when moved into the richer 5-agent market
+  - the market becomes more liquid and less prone to flat / dead patches in the live viewer
+
+### Important Metric Caution For 5-Agent Comparisons
+
+- Once PPO is added as a fifth participant, total-equity metrics are no longer directly comparable to the 4-agent baseline:
+  - the right-hand side now has an extra agent with its own capital and inventory
+- Therefore, the most meaningful 5-agent comparison metrics are:
+  - trade count
+  - spread availability
+  - mean spread
+  - volatility
+  - per-agent outcomes
+  - live-view market behavior
+
+### Current Reading After The 5-Agent Bridge
+
+- This is a strong sign that the roadmap toward MARL is viable.
+- PPO is no longer only "winning by replacing trend"; it can remain competitive as an additional participant in a richer ecology.
+- The 5-agent market also appears qualitatively healthier:
+  - fewer flat-price episodes
+  - more continuous liquidity
+  - less brittle dependence on one participant role
+
+### Next Control Experiment Under Discussion
+
+- Before adding a second AI agent, the preferred next control is:
+  - build a 5-agent scripted-only market by adding an extra scripted trend-like participant
+  - compare that against the 5-agent market with `rl_01`
+- Goal:
+  - separate the effect of "one extra participant" from the effect of "this extra participant is PPO"
+- This is not meant to imitate PPO behavior exactly.
+- It is meant to answer the cleaner research question:
+  - does PPO outperform a reasonable scripted fifth participant in the same richer market structure?
