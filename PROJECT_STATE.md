@@ -1998,3 +1998,178 @@ This section is the chronological history of the important RL / market-ecology i
   - keep `rl_01` fixed first
   - train `rl_02` against the existing scripted ecology plus frozen `rl_01`
   - treat that as the next asymmetric bridge toward MARL
+
+### RL_01 Versioning Decision
+
+- Before starting the `rl_02` phase, we decided to preserve the current `rl_01` checkpoint trained in the 4-agent replacement market as a permanent benchmark opponent.
+- Naming / interpretation:
+  - `rl_01_v1`:
+    - current PPO checkpoint trained in the 4-agent market
+    - keep this frozen and do not overwrite it
+  - `rl_01_v2`:
+    - next PPO retrain in the true 5-agent market
+    - this will be evaluated as a candidate stronger frozen opponent
+- Important reasoning:
+  - retraining `rl_01` in the 5-agent market may improve adaptation to the richer ecology
+  - but it could also reintroduce unwanted liquidity pathologies
+  - preserving `rl_01_v1` gives us a clean fallback and a second benchmark opponent for later `rl_02` experiments
+- Planned usage:
+  - train and evaluate `rl_01_v2` in the 5-agent market
+  - if `rl_01_v2` looks healthy, freeze it as the main next opponent
+  - later, `rl_02` can be trained and evaluated against:
+    - frozen `rl_01_v1` (4-agent-trained opponent)
+    - frozen `rl_01_v2` (5-agent-trained opponent)
+- This turns the opponent choice itself into a useful experiment:
+  - how much does the opponent's training ecology affect the next AI agent's learned behavior?
+
+### RL_01_V2 Cancel-Churn Diagnosis
+
+- Before deciding whether `rl_01_v1` or `rl_01_v2` should become the frozen opponent for the future `rl_02` phase, we investigated the strange live-viewer behavior where `rl_01_v2` appeared to spam cancel events.
+- Important diagnosis:
+  - the policy was not primarily choosing `cancel_oldest`
+  - instead, it was repeatedly requesting `limit_sell`
+  - the RL action mask was validating sell actions against total `agent_inventory`
+  - but the simulator enforces reservations against `available_inventory`
+  - this mismatch allowed repeated invalid sell attempts when inventory was already reserved by a resting order
+  - the simulator then logged these failures as `CANCEL_ORDER` events with reason `reservation_rejected`
+- This explains the live-viewer pattern:
+  - RL diagnostics showed many `limit_*` actions and almost no explicit `cancel` actions
+  - yet the recent order event feed showed repeated cancel rows
+
+### RL_01_V2 Cancel-Churn Fix
+
+- We fixed the mask/observation boundary without changing the RL feature-vector shape:
+  - `MarketObservation` now carries `available_cash` and `available_inventory`
+  - the simulator populates those fields from the portfolio
+  - `mask_invalid_action(...)` now validates:
+    - sells against `available_inventory`
+    - buys against estimated required cash and `available_cash`
+- We also improved the live viewer so cancel rows include the reason text when available, making `reservation_rejected` and other auto-cancel causes visible in the UI.
+
+### Post-Fix Sanity Check
+
+- We ran short sanity evals (`seed=7`, `horizon=400`) for both:
+  - `rl_01_v1`
+  - `rl_01_v2`
+- After the mask fix:
+  - `rl_01_v1` produced `0` RL cancel events
+  - `rl_01_v2` produced `0` RL cancel events
+- This strongly supports the diagnosis that the visible cancel spam was caused by the masking/reservation mismatch rather than an intentionally cancel-heavy learned policy.
+
+### Current Reading After The Fix
+
+- `rl_01_v1` still appears stronger than `rl_01_v2` on market-quality metrics from the larger 10k-step runs.
+- However:
+  - the live-viewer cancel churn was a real infrastructure bug
+  - and it is now fixed
+- Therefore, the next fair step is:
+  - retrain `rl_01_v2` in the 5-agent market with the corrected mask
+  - then re-evaluate before making a final `v1` vs `v2` decision.
+
+### Why V1 Did Not Show The Same Cancel Spam
+
+- Current interpretation:
+  - the masking/reservation bug was structural and affected both `rl_01_v1` and `rl_01_v2`
+  - it was not a bug unique to `v2`
+- The most likely reason it was much more visible in `v2` is behavioral:
+  - `v2` appeared more passive and repost-heavy
+  - it more often kept a resting sell order on the book
+  - then it repeatedly tried to submit another `limit_sell` while the same inventory was already reserved
+  - this produced many `reservation_rejected` cancel events in the live viewer
+- By contrast, `v1` appeared more aggressive / directional:
+  - it spent less time in the “one resting sell, try to sell again” state
+  - so the same infrastructure bug surfaced much less often
+- Important framing:
+  - this is still an inference from behavior and code-path analysis, not a claim that `v1` was bug-free
+  - the bug existed for both policies, but `v2`’s policy style exposed it much more clearly
+
+### RL_01 Freeze Decision For RL_02 Phase
+
+- After comparing `rl_01_v1` and `rl_01_v2` qualitatively and quantitatively, the preferred current opponent is still `rl_01_v1`.
+- Reasoning:
+  - `rl_01_v1` remains the more attractive policy for market quality
+  - it tends to generate more activity and a livelier ecology
+  - `rl_01_v2` / `v2_maskfix` appears more passive, more limit-order-heavy, and more likely to settle into quiet inventory accumulation
+- Current working decision:
+  - freeze `rl_01_v1`
+  - move forward with the next roadmap step: add `rl_02` as a second AI-controlled participant
+
+### Frozen RL_01 + Learning RL_02 Infrastructure
+
+- We implemented the next MARL bridge step in the codebase:
+  - support for one learning RL slot plus one optional frozen PPO opponent slot
+  - this works for:
+    - training
+    - evaluation
+    - live viewer runtime configuration
+- New capabilities:
+  - add a frozen PPO agent from a checkpoint
+  - optionally clone that frozen agent from a scripted template id
+  - optionally override the frozen agent starting inventory
+  - keep the learning RL agent as a separate runtime-controlled slot
+- Important turn-order choice:
+  - when both `rl_01` (frozen) and `rl_02` (learning) are added to the market, the config now adds `rl_01` first and `rl_02` second
+  - this creates the natural participant order:
+    - `maker_01`
+    - `retail_01`
+    - `informed_01`
+    - `trend_01`
+    - `rl_01`
+    - `rl_02`
+- This is now the intended 6-agent bridge environment for the next asymmetric MARL phase.
+
+### First RL_02 Result Against Frozen RL_01_V1
+
+- We trained the first asymmetric 6-agent setup:
+  - scripted baseline ecology
+  - frozen `rl_01_v1`
+  - learning `rl_02`
+- The first evaluation result exposed a major pathology rather than a clean MARL success.
+- Main behavioral pattern seen in both metrics and the live viewer:
+  - `rl_02` repeatedly leaned on `limit_buy`
+  - it bought inventory away from the other participants, including frozen `rl_01`
+  - once supply was exhausted, the market became sparse and eventually nearly flat
+  - `rl_02` then continued to sit on inventory without meaningfully selling back out
+- Quantitative signs of the pathology:
+  - trade count collapsed dramatically relative to the scripted baseline
+  - spread availability also collapsed
+  - `rl_02` ended with very large long inventory
+  - the rest of the ecology often finished close to flat / out of inventory
+- Current interpretation:
+  - this run is more useful as a reward-design diagnostic than as a verdict on the 6-agent bridge itself
+
+### Reward-System Diagnosis After RL_02
+
+- We investigated whether `rl_02` was exploiting unrealized reward in illiquid states.
+- Important code-level finding:
+  - RL reward uses both:
+    - `realized_pnl_delta`
+    - `equity_delta`
+  - and in training both coefficients are currently `1.0`
+- The critical marking rule:
+  - `agent_equity` is marked to book midpoint when a midpoint exists
+  - but if no midpoint exists, equity falls back to the latent fundamental
+- Why this matters:
+  - after `rl_02` buys out the available supply, the market can lose a meaningful midpoint
+  - once that happens, reward can drift with the latent fundamental even though the position is not being marked through a liquid market
+  - this likely rewards “corner inventory and wait” behavior too generously
+- So the current reward problem appears to have two parts:
+  - unrealized mark-to-market falls back to latent fundamental when market liquidity disappears
+  - unrealized `equity_delta` is currently weighted strongly enough that large held positions can dominate the learning signal
+
+### Current Recommendation Before Continuing MARL
+
+- We do not currently trust the first `rl_02` run as a healthy asymmetric-MARL result.
+- The most likely issue is not the frozen-opponent setup itself, but the reward design.
+- Current next-step recommendation:
+  - redesign the reward / mark-to-market logic before drawing conclusions from `rl_02`
+- Proposed direction for the next reward-system pass:
+  - stop using latent fundamental as the reward mark-to-market fallback when midpoint disappears
+  - instead use a more execution-grounded mark, such as:
+    - best bid / best ask depending on side
+    - or last trade / previous valid market mark
+  - reduce reward dependence on unrealized equity drift
+  - increase pressure to realize / close positions rather than only accumulate them
+- Practical conclusion:
+  - keep `rl_01_v1` as the preferred frozen opponent for now
+  - discuss and redesign reward shaping before retraining `rl_02`
