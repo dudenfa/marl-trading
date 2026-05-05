@@ -2173,3 +2173,68 @@ This section is the chronological history of the important RL / market-ecology i
 - Practical conclusion:
   - keep `rl_01_v1` as the preferred frozen opponent for now
   - discuss and redesign reward shaping before retraining `rl_02`
+
+### Reward-System Redesign Implementation
+
+- We implemented the next reward-system pass before retraining `rl_02`.
+- Main reward / mark-to-market changes:
+  - `agent_equity` for RL reward no longer falls back to latent fundamental when midpoint disappears
+  - instead, the simulator now uses a more execution-grounded mark:
+    - long inventory -> best bid when available
+    - short inventory -> best ask when available
+    - flat inventory -> midpoint when available
+    - if no executable quote exists -> last trade price
+    - final fallback -> starting midpoint
+- This executable mark is now used consistently across:
+  - RL observations / `agent_equity`
+  - simulator total-equity step records
+  - final portfolio summaries in run results
+  - live viewer per-agent unrealized PnL display
+- We also changed reward shaping defaults and configuration:
+  - introduced an explicit `reward_equity_delta_coefficient`
+  - defaulted it to `0.0` for both training and evaluation workflows
+  - kept `reward_realized_pnl_delta_coefficient = 1.0`
+- This means the new default PPO reward is now much closer to:
+  - realized PnL delta
+  - minus inactivity / inventory penalties
+  - with equity drift only included when explicitly turned on
+
+### Motivation For The Redesign
+
+- Goal:
+  - stop rewarding “buy everything, let the book die, and drift with latent fundamental”
+- Expected effect:
+  - large stuck long positions should no longer receive unrealized reward from latent-value movement alone
+  - the agent should have much stronger incentive to realize gains through actual trading
+  - the next `rl_02` retrain should be a cleaner test of the asymmetric 6-agent setup
+
+### Validation After Reward Redesign
+
+- Focused checks passed after implementation:
+  - reward / CLI metadata tests
+  - simulator executable-mark test
+  - RL boundary/env tests
+  - Python compile pass
+- This establishes the new baseline before retraining `rl_02` against frozen `rl_01_v1`.
+
+### Comparison / Accounting Fix For Runtime RL Agents
+
+- We found that evaluation / comparison rows for runtime-added RL agents were still disagreeing with the live viewer.
+- Root causes:
+  - runtime-added agents (`rl_01`, `rl_02`) were still being evaluated with scripted default starting inventory assumptions in the health-report layer
+  - unrealized PnL in the comparison path was still using a single shared final mark price, while the simulator and live viewer now mark each portfolio with its own executable side-aware mark
+- Fixes implemented:
+  - health reporting now accepts runtime starting-inventory overrides for both the learning agent and any frozen runtime agent
+  - portfolio summaries now carry:
+    - `starting_cash`
+    - `starting_inventory`
+    - `mark_price`
+  - per-agent unrealized PnL in the comparison path now uses the agent's own final portfolio mark instead of one global mark
+- Validation after the fix:
+  - focused tests pass, including a regression test for a 6-agent env with both:
+    - frozen `rl_01`
+    - learning `rl_02`
+  - for runtime RL agents, `PnL` now lines up with `realized + unrealized`, which is the expected accounting identity
+- Practical result:
+  - regenerated `rl_02 rewardfix` comparisons now match live-view behavior much more closely
+  - this gives us a trustworthy basis for interpreting the new 6-agent results and tuning the next reward pass
