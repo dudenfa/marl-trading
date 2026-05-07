@@ -2291,15 +2291,28 @@ This section is the chronological history of the important RL / market-ecology i
 - Option B trades more actively, carries more inventory, and behaves more like a real adversarial participant than prior `rl_02` versions.
 - `rl_02 Option A` is not competitive enough to carry forward.
 
+### Risk Metrics Upgrade
+
+- Added per-agent episode risk metrics to the shared analysis layer so both market-health reports and RL eval/compare outputs now expose:
+  - peak equity
+  - max equity drawdown
+  - max equity drawdown percentage
+  - peak total PnL
+  - max PnL drawdown
+  - max inventory
+  - min inventory
+  - max absolute inventory
+- These are reconstructed from the existing event stream using the same executable-mark style we now use for RL accounting:
+  - long inventory marks to best bid when available
+  - short inventory marks to best ask when available
+  - flat inventory marks to midpoint
+  - otherwise fall back to last trade, then the starting midpoint
+- This gives us a much better read on agent risk handling without changing simulator logging or training behavior.
+
 ### Important Caveats
 
 - Option B appears stronger as a competitor, but not obviously better for market quality.
 - `hold` behavior has largely disappeared from `rl_02`; this is not necessarily bad, but it should be remembered when interpreting policy style.
-- Current evaluation still lacks richer risk diagnostics such as:
-  - max drawdown
-  - running PnL high-water mark
-  - max inventory held
-  - other risk-exposure summaries through the episode
 
 ### Fact-Checked Note On Informed Trader
 
