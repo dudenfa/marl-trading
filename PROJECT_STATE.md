@@ -2238,3 +2238,79 @@ This section is the chronological history of the important RL / market-ecology i
 - Practical result:
   - regenerated `rl_02 rewardfix` comparisons now match live-view behavior much more closely
   - this gives us a trustworthy basis for interpreting the new 6-agent results and tuning the next reward pass
+
+### Soft-Inventory RL_02 Tuning
+
+- We ran two follow-up `rl_02` reward-shaping experiments in the 6-agent market:
+  - frozen `rl_01_v1`
+  - learning `rl_02`
+  - four scripted baseline agents
+- The goal was to soften the post-rewardfix inventory pressure without reintroducing the original hoarding pathology.
+
+### Option A
+
+- Configuration:
+  - `reward_equity_delta_coefficient = 0.05`
+  - `reward_inventory_penalty = 0.003`
+  - `reward_inventory_risk_penalty = 0.0001`
+  - `reward_inactivity_penalty = 0.01`
+- Result:
+  - still too passive / too weak
+  - `rl_02` often finished near flat or slightly negative
+  - behavior remained too cautious to count as a meaningful second AI competitor
+
+### Option B
+
+- Configuration:
+  - `reward_equity_delta_coefficient = 0.1`
+  - `reward_inventory_penalty = 0.002`
+  - `reward_inventory_risk_penalty = 0.00005`
+  - `reward_inactivity_penalty = 0.01`
+- Result:
+  - this is the first `rl_02` candidate that looks genuinely competitive
+  - `rl_02` became visibly less shy in the live viewer
+  - it now trades in a way that is much closer to `rl_01`:
+    - market buy / limit sell style
+    - more willingness to carry inventory
+    - more meaningful adversarial pressure in the 6-agent market
+  - on unseen `seed 20`, `rl_02` under Option B got meaningfully closer to `rl_01` and sometimes looked competitive intra-run in the live viewer
+
+### Corrected Interpretation After Accounting Fix
+
+- After the runtime-accounting fix:
+  - compare outputs now align much better with live-view behavior
+  - `PnL` for runtime RL agents is now trustworthy relative to `realized + unrealized`
+- This materially changed the interpretation of `rl_01` and `rl_02` results:
+  - earlier large apparent `rl_01` losses in the 6-agent runs were partly reporting artifacts
+  - `rl_01` still looks like a strong learned trader after correcting the accounting path
+
+### Current Behavioral Conclusions
+
+- `rl_01_v1` remains the strongest and most robust learned trader so far.
+- `rl_02 Option B` is the best second-agent candidate so far.
+- Option B trades more actively, carries more inventory, and behaves more like a real adversarial participant than prior `rl_02` versions.
+- `rl_02 Option A` is not competitive enough to carry forward.
+
+### Important Caveats
+
+- Option B appears stronger as a competitor, but not obviously better for market quality.
+- `hold` behavior has largely disappeared from `rl_02`; this is not necessarily bad, but it should be remembered when interpreting policy style.
+- Current evaluation still lacks richer risk diagnostics such as:
+  - max drawdown
+  - running PnL high-water mark
+  - max inventory held
+  - other risk-exposure summaries through the episode
+
+### Fact-Checked Note On Informed Trader
+
+- We should **not** claim that `rl_01` clearly and consistently outperformed `informed_01`.
+- What we can say:
+  - `rl_01` clearly outperformed the scripted trend baseline it replaced
+  - `rl_01` often reduced informed's edge
+  - but `informed_01` still frequently remained strongest in absolute end results across the main comparisons we reviewed
+
+### Current Recommendation
+
+- Treat `rl_02 Option B` as the leading second-agent candidate.
+- Keep `rl_01_v1` as the promoted benchmark / frozen opponent.
+- Add richer risk metrics before promoting `rl_02 Option B` further or proceeding to the next MARL step.
